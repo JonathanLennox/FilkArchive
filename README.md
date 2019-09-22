@@ -3,7 +3,10 @@
 This directory contains a number of utilities and notes for use by the Filk Archive project.
 
 The program `split-flac.pl` splits and encodes a flac file into mp3 clips, suitable for zooniverse,
-and also outputs a csv file with formatted appropriately for the zooniverse `panoptes` tool.
+and also outputs a csv file formatted appropriately for the zooniverse `panoptes` tool.
+
+The program `analyze-zooniverse.pl` processes the output of the zooniverse classifications.csv into
+a csv file suitable for human consumption (when imported into a spreadsheet).
 
 To create flac files from all the wav files in a directory:
 
