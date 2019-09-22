@@ -11,9 +11,9 @@ a csv file suitable for human consumption (when imported into a spreadsheet).
 
 To create flac files from all the wav files in a directory:
 
-$ `find . -name '*.wav' -print0 | xargs -0 flac`
+$ `find . -iname '*.wav' -print0 | xargs -0 flac -V --keep-foreign-metadata -f --delete-input-file`
 
-To generate sha256 checksums of all the wav files in a directory:
+To generate sha256 checksums of all the files in a directory:
 
-$ `find . -name '*.wav' -print0 | xargs -0 sha256sum > sha256-sum.txt`
+$ `find . -type f -print0 | xargs -0 sha256sum > sha256-sum.txt`
 
