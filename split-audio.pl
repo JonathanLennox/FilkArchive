@@ -5,6 +5,8 @@ use DateTime::Duration;
 use File::Spec;
 use File::Path qw(make_path);
 use POSIX qw(ceil strftime);
+use JSON::PP;
+use Getopt::Long;
 
 # A script to split audio files into short chunks, and encode them as MP3s.
 # The input can be any format understood by SoX, but wav or flac are recommended.
@@ -20,8 +22,14 @@ my $output_dir = "Split";
 my $output_file_random_bytes = 8;
 my $csv_file = 'subjects.csv';
 
-my $recorded_by = "Harold Stein"; # TODO: parameter to set this, for other people's recordings
+my $recorded_by = "Harold Stein";
 my $file_date_cutoff = 2019; # The cut-off after which we will consider file dates to be "new".
+
+my $metadata_file;
+my $metadata;
+
+GetOptions("recorded-by=s" => \$recorded_by,
+	   "metadata=s" => \$metadata_file);
 
 # Make sure SoX is installed
 
@@ -141,12 +149,27 @@ sub extract_loc_and_event($)
     my ($volume, $dir, $filename) = File::Spec->splitpath($file);
     my (@dirs) = File::Spec->splitdir($dir);
 
-    my ($location) = $dirs[-2];
-    my ($event);
-    ($event = $filename) =~ s/\.[a-z0-9]*$//;
+    my ($location, $event);
 
-    $event =~ s/ - TRUNCATED//;
-    
+    if (exists($metadata->{$file}{location})) {
+	$location = $metadata->{$file}{location};
+    }
+    elsif (exists($metadata->{location})) {
+	$location = $metadata->{location};
+    }
+    else {
+	$location = $dirs[-2];
+    }
+
+    if (exists($metadata->{$file}{event})) {
+	$event = $metadata->{$file}{event};
+    }
+    else {
+	($event = $filename) =~ s/\.[a-z0-9]*$//;
+
+	$event =~ s/ - TRUNCATED//;
+    }
+
     return ($location, $event)
 }
 
@@ -154,6 +177,13 @@ sub extract_loc_and_event($)
 sub get_file_date($)
 {
     my ($file) = @_;
+
+    if (exists($metadata->{$file}{date})) {
+	return $metadata->{$file}{date};
+    }
+    elsif (exists($metadata->{date})) {
+	return $metadata->{date};
+    }
 
     my (@stat) = stat($file) or die("Couldn't stat $file: $!");
     my $mtime = $stat[9];
@@ -191,12 +221,13 @@ sub process_file($)
 
     my $file_date = get_file_date($file);
     my $file_date_desc = ($file_date ne "" ? $file_date : "date unknown");
+    my ($location, $event) = extract_loc_and_event($file);
 
-    printf "%s: %s (%d samples at %d hz), %s\n", $file, format_duration($duration), $samples, $hz, $file_date_desc;
+    printf "%s: %s (%d samples at %d hz)\n", $file, format_duration($duration), $samples, $hz;
+    printf "%s, %s, %s\n", $location, $event, $file_date_desc;
 
     my $num_clips = ceil($duration/$clip_duration);
     my $clipdigits = ceil(log($num_clips)/log(10));
-    my ($location, $event) = extract_loc_and_event($file);
 
     my $outdir = get_output_dir($file);
     my $csv = open_csvfile($outdir);
@@ -228,6 +259,15 @@ sub process_file($)
 	print $csv csv($outfilebase, $file, $location, $event, $recorded_by, $idx, $file_date, format_duration($clipstart/$hz), format_duration($clipend/$hz));
     }
     close($csv) or die("Error closing csv file");
+}
+
+if (defined($metadata_file)) {
+    local $/;
+    my $json = JSON::PP->new;
+    $json->relaxed();
+    open (my $fh, '<', $metadata_file) or die ("Couldn't open $metadata_file: $!");
+    my $metadata_text = <$fh>;
+    $metadata = $json->decode( $metadata_text );
 }
 
 foreach my $file (@ARGV) {
