@@ -10,6 +10,7 @@ do
     then
 	OUT="$(echo "$F" | sed 's/\(SR[0-9]*\)F/\1-mixed/')"
 	sox -S -m "$F" "$R" "$OUT"
+	touch -r "$F" "$OUT"
     fi
 done
 
@@ -21,6 +22,7 @@ do
     then
 	OUT="$(echo "$XY" | sed 's/\(SR[0-9]*\)XY/\1-mixed/')"
 	sox "$MS" -t wav - remix -m 1,2 1,2i | sox -S -m "$XY" - "$OUT"
+	touch -r "$XY" "$OUT"
     fi
 done
 
