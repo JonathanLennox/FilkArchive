@@ -2,6 +2,8 @@
 
 This directory contains a number of utilities and notes for use by the Filk Archive project.
 
+The program `zoom-mixdown.sh` mixes down Zoom H2 and H2n 4-channel recordings to 2-channel stereo.
+
 The program `split-audio.pl` splits and encodes an audio file (in any format readable by SoX) into mp3 clips,
 suitable for zooniverse, and also outputs a csv file formatted appropriately for the zooniverse `panoptes` tool.
 You must have the SoX toolchain installed.
