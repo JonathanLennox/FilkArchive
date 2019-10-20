@@ -235,6 +235,7 @@ sub process_file($)
 
     my $num_clips = ceil($duration/$clip_duration);
     my $clipdigits = ceil(log($num_clips)/log(10));
+    $clipdigits = 1 if ($clipdigits < 1);
 
     my $outdir = get_output_dir($file);
     my $csv = open_csvfile($outdir);
