@@ -18,7 +18,7 @@ my $clip_duration = 60; # Seconds
 my $mp3_bitrate = 128; # kbps
 # Note that zooniverse requires that subject files be no bigger than 1 meg;
 # consider this when setting the above two parameters.
-my $output_dir = "Split";
+my $output_dir_name = "Split";
 my $output_file_random_bytes = 8;
 my $csv_file = 'subjects.csv';
 
@@ -27,9 +27,11 @@ my $file_date_cutoff = 2019; # The cut-off after which we will consider file dat
 
 my $metadata_file;
 my $metadata;
+my $output_dir;
 
 GetOptions("recorded-by=s" => \$recorded_by,
-	   "metadata=s" => \$metadata_file);
+	   "metadata=s" => \$metadata_file,
+	   "output-dir=s" => \$output_dir);
 
 # Make sure SoX is installed
 
@@ -121,8 +123,13 @@ sub random_file($$$)
 sub get_output_dir($)
 {
     my ($file) = @_;
+    if (defined($output_dir)) {
+	make_path($output_dir);
+	return $output_dir;
+    }
+
     my ($volume, $dir, $filename) = File::Spec->splitpath($file);
-    my $ret = File::Spec->catpath($volume, $dir, $output_dir);
+    my $ret = File::Spec->catpath($volume, $dir, $output_dir_name);
     make_path($ret);
     return $ret;
 }
