@@ -10,19 +10,15 @@ use sort 'stable';
 
 my $filename = 'filk-archive-beta-test-classifications.csv';
 
-my %has_index;
-my %classifications;
+my (%audio_classifications, %file_classifications);
 
-
-my %tasklabels;
-my %shortlabels;
+my (%audio_tasklabels, %file_tasklabels);
 		    
 sub dump_json($) {
     return dump_filtered ( $_[0], sub { { dump => $_[1] ? "true" : "false" } if JSON::PP::is_bool $_[1] } );
 }
 
-
-sub parse_classification($)
+sub parse_classification_audio($)
 {
     my ($value) = @_;
 
@@ -31,8 +27,6 @@ sub parse_classification($)
     my $subject_id = $subject_ids[0];
 
     my $orig_file = $value->{subject_data}{$subject_id}{"#origfile"};
-
-    my $have_index = exists($value->{subject_data}{$subject_id}{"#index"});
 
     my $key = $value->{subject_data}{$subject_id}{clipstart};
     my $location = $value->{subject_data}{$subject_id}{location};
@@ -46,8 +40,8 @@ sub parse_classification($)
 
     foreach my $class (@{$value->{annotations}}) {
 	my $task_id = $class->{task};
-	if (!exists($tasklabels{$task_id}) || $tasklabels{$task_id}[1] < $workflow_version) {
-	    $tasklabels{$task_id} = [ $class->{task_label}, $workflow_version ];
+	if (!exists($audio_tasklabels{$task_id}) || $audio_tasklabels{$task_id}[1] < $workflow_version) {
+	    $audio_tasklabels{$task_id} = [ $class->{task_label}, $workflow_version ];
 	}
 
 	my $class_value;
@@ -60,9 +54,68 @@ sub parse_classification($)
 	$classes{$task_id} = $class_value;
     }
     
-    push(@{$classifications{$orig_file}{$key}},
+    push(@{$audio_classifications{$orig_file}{$key}},
 	 {user => $value->{user_name}, time => $value->{metadata}{finished_at}, cliptime => $cliptime,
 	  location => $location, event => $event, classifications => \%classes});
+}
+
+
+sub parse_classification_file($)
+{
+    my ($value) = @_;
+    my @subject_ids = keys(%{$value->{subject_data}});
+
+    my $subject_id = $subject_ids[0];
+
+    my $source = $value->{subject_data}{$subject_id}{"source"};
+    my $file = $value->{subject_data}{$subject_id}{"#file"};
+
+    my $workflow_version = $value->{workflow_version};
+
+    my %classes;
+
+    foreach my $class (@{$value->{annotations}}) {
+	my $task_id = $class->{task};
+	if (!exists($file_tasklabels{$task_id}) || $file_tasklabels{$task_id}[1] < $workflow_version) {
+	    $file_tasklabels{$task_id} = [ $class->{task_label}, $workflow_version ];
+	}
+
+	my $class_value;
+	if (ref $class->{value}) {
+	    $class_value = join('; ', @{$class->{value}});
+	}
+	else {
+	    $class_value = $class->{value};
+	}
+	$classes{$task_id} = $class_value;
+    }
+
+    push(@{$file_classifications{$source}{$file}},
+	 {user => $value->{user_name}, time => $value->{metadata}{finished_at},
+	  classifications => \%classes});
+}
+
+
+sub parse_classification($)
+{
+    my ($value) = @_;
+
+    my @subject_ids = keys(%{$value->{subject_data}});
+
+    my $subject_id = $subject_ids[0];
+
+    if (exists($value->{subject_data}{$subject_id}{"#origfile"})) {
+	parse_classification_audio($value);
+    }
+    elsif (exists($value->{subject_data}{$subject_id}{"#file"}) &&
+	   exists($value->{subject_data}{$subject_id}{"source"})) {
+	parse_classification_file($value);
+	return;
+    }
+    else {
+	print STDERR "Unexpected subject data:\n";
+	print STDERR dump_json($value), "\n";
+    }
 }
 
 # Sort clip start times.  Takes advantage of the fact that if durations are the same 
@@ -93,8 +146,6 @@ sub csv(@)
     return join(",", map {cq($_)} @_) . "\n";
 }
 
-
-
 my @rows;
 
 my $parser = Parse::CSV->new(
@@ -119,41 +170,87 @@ if ( $parser->errstr ) {
 
 # exit 0;
 
-my @columns = (
-    "Location",
-    "Event",
-    "Original File",
-    "Classifier",
-    "Classification Time",
-    "Clip time"
-    );
+sub output_audio() {
+    my @audio_columns = (
+	"Location",
+	"Event",
+	"Original File",
+	"Classifier",
+	"Classification Time",
+	"Clip time"
+	);
 
-my @tasks = sort keys %tasklabels;
+    my @tasks = sort keys %audio_tasklabels;
 
-foreach my $task_id (@tasks) {
-    push(@columns, $tasklabels{$task_id}[0]);
-}
-
-print csv(@columns);
-
-foreach my $file (sort keys %classifications) {
-    foreach my $clipstart (sort sortclips keys %{$classifications{$file}}) {
-	foreach my $class (@{$classifications{$file}{$clipstart}}) {
-	    my @row = (
-		$class->{location},
-		$class->{event},
-		$file,
-		$class->{user},
-		$class->{time},
-		$class->{cliptime}
-		);
-
-	    foreach my $task_id (@tasks) {
-		push(@row, $class->{classifications}{$task_id});
-	    }
-
-	    print csv(@row);
-	}
+    foreach my $task_id (@tasks) {
+	push(@audio_columns, $audio_tasklabels{$task_id}[0]);
     }
-    print "\n";
+
+    print csv(@audio_columns);
+
+    foreach my $file (sort keys %audio_classifications) {
+	foreach my $clipstart (sort sortclips keys %{$audio_classifications{$file}}) {
+	    foreach my $class (@{$audio_classifications{$file}{$clipstart}}) {
+		my @row = (
+		    $class->{location},
+		    $class->{event},
+		    $file,
+		    $class->{user},
+		    $class->{time},
+		    $class->{cliptime}
+		    );
+
+		foreach my $task_id (@tasks) {
+		    push(@row, $class->{classifications}{$task_id});
+		}
+
+		print csv(@row);
+	    }
+	}
+	print "\n";
+    }
 }
+
+
+sub output_files() {
+    my @file_columns = (
+	"Source",
+	"Original File",
+	"Classifier",
+	"Classification Time",
+	);
+
+    my @tasks = sort keys %file_tasklabels;
+
+    foreach my $task_id (@tasks) {
+	push(@file_columns, $file_tasklabels{$task_id}[0]);
+    }
+
+    print csv(@file_columns);
+
+    foreach my $source (sort keys %file_classifications) {
+	foreach my $file (sort keys %{$file_classifications{$source}}) {
+	    foreach my $class (@{$file_classifications{$source}{$file}}) {
+		my @row = (
+		    $source,
+		    $file,
+		    $class->{user},
+		    $class->{time},
+		    );
+
+		foreach my $task_id (@tasks) {
+		    push(@row, $class->{classifications}{$task_id});
+		}
+
+		print csv(@row);
+	    }
+	}
+	print "\n";
+    }
+}
+
+output_audio();
+
+print "\n";
+
+output_files();
