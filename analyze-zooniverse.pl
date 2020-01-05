@@ -10,6 +10,9 @@ use sort 'stable';
 
 my $filename = 'filk-archive-beta-test-classifications.csv';
 
+my $audio_output_file = 'audio_classifications.csv';
+my $file_output_file = 'file_classifications.csv';
+
 my (%audio_classifications, %file_classifications);
 
 my (%audio_tasklabels, %file_tasklabels);
@@ -170,7 +173,9 @@ if ( $parser->errstr ) {
 
 # exit 0;
 
-sub output_audio() {
+sub output_audio($) {
+    my ($f) = @_;
+
     my @audio_columns = (
 	"Location",
 	"Event",
@@ -186,7 +191,7 @@ sub output_audio() {
 	push(@audio_columns, $audio_tasklabels{$task_id}[0]);
     }
 
-    print csv(@audio_columns);
+    print $f csv(@audio_columns);
 
     foreach my $file (sort keys %audio_classifications) {
 	foreach my $clipstart (sort sortclips keys %{$audio_classifications{$file}}) {
@@ -204,18 +209,20 @@ sub output_audio() {
 		    push(@row, $class->{classifications}{$task_id});
 		}
 
-		print csv(@row);
+		print $f csv(@row);
 	    }
 	}
-	print "\n";
+	print $f "\n";
     }
 }
 
 
-sub output_files() {
+sub output_files($) {
+    my ($f) = @_;
+
     my @file_columns = (
 	"Source",
-	"Original File",
+	"File",
 	"Classifier",
 	"Classification Time",
 	);
@@ -226,7 +233,7 @@ sub output_files() {
 	push(@file_columns, $file_tasklabels{$task_id}[0]);
     }
 
-    print csv(@file_columns);
+    print $f csv(@file_columns);
 
     foreach my $source (sort keys %file_classifications) {
 	foreach my $file (sort keys %{$file_classifications{$source}}) {
@@ -242,15 +249,21 @@ sub output_files() {
 		    push(@row, $class->{classifications}{$task_id});
 		}
 
-		print csv(@row);
+		print $f csv(@row);
 	    }
 	}
-	print "\n";
+	print $f "\n";
     }
 }
 
-output_audio();
+open(my $audio_out, ">", $audio_output_file) or die ("Couldn't open $audio_output_file: $!");
 
-print "\n";
+output_audio($audio_out);
 
-output_files();
+close($audio_out) or die ("Couldn't close $audio_output_file: $!");
+
+open(my $file_out, ">", $file_output_file) or die ("Couldn't open $file_output_file: $!");
+
+output_files($file_out);
+
+close($file_out) or die ("Couldn't close $file_output_file: $!");
