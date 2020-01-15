@@ -5,10 +5,11 @@ use Parse::CSV;
 use JSON::PP;
 use Data::Dump 'dump';
 use Data::Dump::Filtered 'dump_filtered';
+use Encode;
 
 use sort 'stable';
 
-my $filename = 'filk-archive-beta-test-classifications.csv';
+my $filename = 'filk-archive-classifications.csv';
 
 my $audio_output_file = 'audio_classifications.csv';
 my $file_output_file = 'file_classifications.csv';
@@ -158,7 +159,7 @@ my $parser = Parse::CSV->new(
 
 while ( my $value = $parser->fetch ) {
     foreach my $field ("subject_data", "metadata", "annotations") {
-	$value->{$field} = decode_json $value->{$field};
+	$value->{$field} = decode_json(encode('utf-8', $value->{$field}));
     }
 
     parse_classification($value);
@@ -257,12 +258,14 @@ sub output_files($) {
 }
 
 open(my $audio_out, ">", $audio_output_file) or die ("Couldn't open $audio_output_file: $!");
+binmode($audio_out, ":utf8");
 
 output_audio($audio_out);
 
 close($audio_out) or die ("Couldn't close $audio_output_file: $!");
 
 open(my $file_out, ">", $file_output_file) or die ("Couldn't open $file_output_file: $!");
+binmode($file_out, ":utf8");
 
 output_files($file_out);
 
