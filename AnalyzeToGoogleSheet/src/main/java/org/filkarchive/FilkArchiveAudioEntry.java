@@ -3,11 +3,6 @@ package org.filkarchive;
 class FilkArchiveAudioEntry
     extends FilkArchiveEntry
 {
-    static boolean isInstance(
-        ZooniverseClassificationEntry raw)
-    {
-        return raw.subjectData.containsKey("#origfile");
-    }
 
     final String origfile;
     final String clipstart, cliptime;
@@ -36,5 +31,22 @@ class FilkArchiveAudioEntry
     String getSecondaryKey()
     {
         return clipstart;
+    }
+
+    @Override
+    public String getColumnValue(String column)
+    {
+        switch (column)
+        {
+        case "file":
+            return origfile;
+        case "location":
+            return location;
+        case "event":
+            return event;
+        case "cliptime":
+            return cliptime;
+        }
+        return super.getColumnValue(column);
     }
 }

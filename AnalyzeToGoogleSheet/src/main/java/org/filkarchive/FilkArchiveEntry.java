@@ -42,4 +42,24 @@ abstract class FilkArchiveEntry
     abstract String getPrimaryKey();
 
     abstract String getSecondaryKey();
+
+    public String getColumnValue(String column)
+    {
+        if (column.equals("user"))
+        {
+            return user;
+        }
+        else if (column.equals("time"))
+        {
+            return time;
+        }
+        else if (classifications.containsKey(column))
+        {
+            return String.join("; ", classifications.get(column));
+        }
+        else
+        {
+            throw new IllegalArgumentException("Unknown column label " + column);
+        }
+    }
 }

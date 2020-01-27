@@ -3,12 +3,6 @@ package org.filkarchive;
 class FilkArchiveFileEntry
     extends FilkArchiveEntry
 {
-    static boolean isInstance(
-        ZooniverseClassificationEntry raw)
-    {
-        return raw.subjectData.containsKey("source") &&
-            raw.subjectData.containsKey("#file");
-    }
 
     final String source, file;
 
@@ -31,4 +25,18 @@ class FilkArchiveFileEntry
     {
         return file;
     }
+
+    @Override
+    public String getColumnValue(String column)
+    {
+        switch (column)
+        {
+        case "source":
+            return source;
+        case "file":
+            return file;
+        }
+        return super.getColumnValue(column);
+    }
+
 }
