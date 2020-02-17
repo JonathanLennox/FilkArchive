@@ -215,7 +215,7 @@ public class FilkArchiveGoogleSheet
                 }
                 if (!data.getLocation().getLocationType().equals("COLUMN"))
                 {
-                    throw new RuntimeException("Supririsng metadata data location " + data.getLocation().getLocationType() +
+                    throw new RuntimeException("Surprising metadata data location " + data.getLocation().getLocationType() +
                         "for " + data.getMetadataKey() + "=" + data.getMetadataValue());
                 }
                 columnLocations.put(data.getMetadataValue(), data.getLocation().getDimensionRange().getStartIndex());
