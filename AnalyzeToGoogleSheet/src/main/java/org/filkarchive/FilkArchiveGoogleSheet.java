@@ -11,11 +11,11 @@ import com.google.api.client.json.jackson2.*;
 import com.google.api.client.util.store.*;
 import com.google.api.services.sheets.v4.*;
 import com.google.api.services.sheets.v4.model.*;
-import org.eclipse.jetty.util.*;
 
 import java.io.*;
 import java.security.*;
 import java.util.*;
+import java.util.function.*;
 
 public class FilkArchiveGoogleSheet
 {
@@ -114,14 +114,189 @@ public class FilkArchiveGoogleSheet
 
         BatchUpdateSpreadsheetRequest body
             = new BatchUpdateSpreadsheetRequest().setRequests(requests);
+        body.setIncludeSpreadsheetInResponse(true);
 
         BatchUpdateSpreadsheetResponse batchResponse =
             service.spreadsheets().batchUpdate(SPREADSHEET_ID, body).execute();
 
+        spreadsheet = batchResponse.getUpdatedSpreadsheet();
+
         AddSheetResponse response = batchResponse.getReplies().get(0).getAddSheet();
 
-        refreshSheet();
-
         return response.getProperties().getSheetId();
+    }
+
+    private SheetProperties getSheetProperties(int sheetId)
+    {
+        for (Sheet sheet: spreadsheet.getSheets())
+        {
+            if (sheet.getProperties().getSheetId() == sheetId)
+            {
+                return sheet.getProperties();
+            }
+        }
+
+        throw new IllegalStateException();
+    }
+
+    private static String toColumn(int column)
+    {
+        if (column <= 0) {
+            throw new IllegalArgumentException("Bad column value " + column);
+        }
+        StringBuilder builder = new StringBuilder();
+
+        while (column > 0)
+        {
+            int rem = column % 26;
+            column = column / 26 - 1;
+            if (rem == 0)
+            {
+                builder.append('Z');
+            }
+            else
+            {
+                builder.append((char)(rem - 1 + 'A'));
+            }
+        }
+        return builder.reverse().toString();
+    }
+
+    private static String coordinatesToRange(SheetProperties sheetProperties, int startColumn, int startRow, int endColumn, int endRow)
+    {
+        StringBuilder builder = new StringBuilder(sheetProperties.getTitle()).append('!');
+
+        builder.append(toColumn(startColumn)).append(startRow);
+
+        if (startRow != endRow || startColumn != endColumn)
+        {
+            builder.append(":");
+            builder.append(toColumn(endColumn)).append(endRow);
+        }
+
+        return builder.toString();
+    }
+
+    private List<Object> getColumnHeaders(int sheetId)
+        throws IOException
+    {
+        SheetProperties sheetProperties = getSheetProperties(sheetId);
+
+        String headersRange = coordinatesToRange(sheetProperties, 1, 1, sheetProperties.getGridProperties().getColumnCount(), 1);
+
+        ValueRange response = service.spreadsheets().values().get(SPREADSHEET_ID, headersRange).execute();
+
+        if (response.getValues() == null || response.getValues().size() == 0)
+        {
+            return Collections.emptyList();
+        }
+        return response.getValues().get(0);
+    }
+
+    private Map<String, Integer> getColumns(int sheetId, int size)
+        throws IOException
+    {
+        Map<String, Integer> columnLocations = new HashMap<>();
+
+        int i;
+        for (i = 0; i < size; i++) {
+            SearchDeveloperMetadataRequest searchMetadataRequest = new SearchDeveloperMetadataRequest();
+            searchMetadataRequest.setDataFilters(Collections.singletonList(new DataFilter().
+                setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataLocation(new DeveloperMetadataLocation().
+                    setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("COLUMNS").setStartIndex(i).setEndIndex(i+1))).
+                    setLocationMatchingStrategy("EXACT_LOCATION").setMetadataKey("columnId"))));
+
+            SearchDeveloperMetadataResponse metadataSearchResult = service.spreadsheets().developerMetadata().search(SPREADSHEET_ID, searchMetadataRequest).execute();
+
+            List<MatchedDeveloperMetadata> metadataResults = metadataSearchResult.getMatchedDeveloperMetadata();
+            if (metadataResults != null && metadataResults.size() > 0) {
+                if (!metadataResults.get(0).getDeveloperMetadata().getMetadataKey().equals("columnId"))
+                {
+                    throw new RuntimeException("Got surprising metadata key" + metadataResults.get(0).getDeveloperMetadata().getMetadataKey());
+                }
+                columnLocations.put(metadataResults.get(0).getDeveloperMetadata().getMetadataValue(), i);
+            }
+        }
+
+        return columnLocations;
+    }
+
+    public Map<String, Integer> setColumns(int sheetId, List<String> columnValues, Function<String, String> describe)
+        throws IOException
+    {
+        int i;
+
+        List<Object> columnHeaders = getColumnHeaders(sheetId);
+
+        Map<String, Integer> columnLocations = getColumns(sheetId, columnHeaders.size());
+
+        for (i = 0; i < columnValues.size(); i++)
+        {
+            ArrayList<Request> requests = new ArrayList<>();
+
+            String columnId = columnValues.get(i);
+            String description = describe.apply(columnId);
+
+            if (columnLocations.containsKey(columnId))
+            {
+                int loc = columnLocations.get(columnId);
+                if (columnHeaders.get(loc).equals(description))
+                {
+                    continue;
+                }
+                UpdateCellsRequest update = new UpdateCellsRequest().setRows(Collections.singletonList(
+                    new RowData().setValues(Collections.singletonList(new CellData().setUserEnteredValue(new ExtendedValue().setStringValue(description)))))).
+                    setFields("*").
+                    setStart(new GridCoordinate().setColumnIndex(loc).setRowIndex(0).setSheetId(sheetId));
+                requests.add(new Request().setUpdateCells(update));
+            }
+            else
+            {
+                int loc;
+                if (i == 0)
+                {
+                    loc = 0;
+                }
+                else
+                {
+                    String prevColumnId = columnValues.get(i-1);
+                    if (!columnLocations.containsKey(prevColumnId))
+                    {
+                        throw new RuntimeException("columnLocations does not contain column ID " + (i-1) +
+                            " " + prevColumnId + " when processing column ID " + i + " " + columnId);
+                    }
+                    loc = columnLocations.get(prevColumnId) + 1;
+                }
+                InsertDimensionRequest insertDimension = new InsertDimensionRequest().setInheritFromBefore(i > 0).
+                    setRange(new DimensionRange().setSheetId(sheetId).setDimension("COLUMNS").setStartIndex(loc).setEndIndex(loc+1));
+                requests.add(new Request().setInsertDimension(insertDimension));
+
+                CreateDeveloperMetadataRequest createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
+                    setMetadataKey("columnId").setMetadataValue(columnId).setLocation(new DeveloperMetadataLocation().
+                    setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("COLUMNS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
+                requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
+
+                UpdateCellsRequest update = new UpdateCellsRequest().setRows(Collections.singletonList(
+                    new RowData().setValues(Collections.singletonList(new CellData().setUserEnteredValue(new ExtendedValue().setStringValue(description)))))).
+                    setFields("*").
+                    setStart(new GridCoordinate().setColumnIndex(loc).setRowIndex(0).setSheetId(sheetId));
+                requests.add(new Request().setUpdateCells(update));
+            }
+
+            BatchUpdateSpreadsheetRequest body
+                = new BatchUpdateSpreadsheetRequest().setRequests(requests);
+            body.setIncludeSpreadsheetInResponse(true);
+
+            BatchUpdateSpreadsheetResponse batchResponse =
+                service.spreadsheets().batchUpdate(SPREADSHEET_ID, body).execute();
+
+            spreadsheet = batchResponse.getUpdatedSpreadsheet();
+
+            columnHeaders = getColumnHeaders(sheetId);
+
+            columnLocations = getColumns(sheetId, columnHeaders.size());
+        }
+
+        return columnLocations;
     }
 }

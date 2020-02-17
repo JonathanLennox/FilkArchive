@@ -77,5 +77,7 @@ abstract class FilkArchiveCollection
         IOException
     {
         int sheetId = googleSheet.getOrAddSheet(getSheetName());
+
+        Map<String, Integer> columns = googleSheet.setColumns(sheetId, getColumns(), this::getColumnDescription);
     }
 }

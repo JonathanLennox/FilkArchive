@@ -95,11 +95,17 @@ public class AnalyzeToGoogleSheet
 
     static void outputClassificationsToSpreadsheet(
         List<FilkArchiveCollection> collections, FilkArchiveGoogleSheet googleSheet)
-        throws IOException
     {
         for (FilkArchiveCollection collection : collections)
         {
-            collection.outputToSpreadsheet(googleSheet);
+            try
+            {
+                collection.outputToSpreadsheet(googleSheet);
+            }
+            catch (Exception e)
+            {
+                System.err.printf("Error exporting %s: %s%n", collection.getSheetName(), e.toString());
+            }
         }
     }
 }
