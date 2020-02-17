@@ -198,23 +198,27 @@ public class FilkArchiveGoogleSheet
     {
         Map<String, Integer> columnLocations = new HashMap<>();
 
-        int i;
-        for (i = 0; i < size; i++) {
-            SearchDeveloperMetadataRequest searchMetadataRequest = new SearchDeveloperMetadataRequest();
-            searchMetadataRequest.setDataFilters(Collections.singletonList(new DataFilter().
-                setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataLocation(new DeveloperMetadataLocation().
-                    setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("COLUMNS").setStartIndex(i).setEndIndex(i+1))).
-                    setLocationMatchingStrategy("EXACT_LOCATION").setMetadataKey("columnId"))));
+        SearchDeveloperMetadataRequest metadataSearchRequest = new SearchDeveloperMetadataRequest();
+        metadataSearchRequest.setDataFilters(Collections.singletonList(new DataFilter().
+            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("columnId"))));
 
-            SearchDeveloperMetadataResponse metadataSearchResult = service.spreadsheets().developerMetadata().search(SPREADSHEET_ID, searchMetadataRequest).execute();
+        SearchDeveloperMetadataResponse metadataSearchResult = service.spreadsheets().developerMetadata().search(SPREADSHEET_ID, metadataSearchRequest).execute();
 
-            List<MatchedDeveloperMetadata> metadataResults = metadataSearchResult.getMatchedDeveloperMetadata();
-            if (metadataResults != null && metadataResults.size() > 0) {
-                if (!metadataResults.get(0).getDeveloperMetadata().getMetadataKey().equals("columnId"))
+        if (metadataSearchResult.getMatchedDeveloperMetadata() != null)
+        {
+            for (MatchedDeveloperMetadata metadata : metadataSearchResult.getMatchedDeveloperMetadata())
+            {
+                DeveloperMetadata data = metadata.getDeveloperMetadata();
+                if (data.getLocation().getDimensionRange().getSheetId() != sheetId)
                 {
-                    throw new RuntimeException("Got surprising metadata key" + metadataResults.get(0).getDeveloperMetadata().getMetadataKey());
+                    continue;
                 }
-                columnLocations.put(metadataResults.get(0).getDeveloperMetadata().getMetadataValue(), i);
+                if (!data.getLocation().getLocationType().equals("COLUMN"))
+                {
+                    throw new RuntimeException("Supririsng metadata data location " + data.getLocation().getLocationType() +
+                        "for " + data.getMetadataKey() + "=" + data.getMetadataValue());
+                }
+                columnLocations.put(data.getMetadataValue(), data.getLocation().getDimensionRange().getStartIndex());
             }
         }
 
