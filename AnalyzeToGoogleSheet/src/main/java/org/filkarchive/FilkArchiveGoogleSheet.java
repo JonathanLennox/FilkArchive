@@ -193,7 +193,7 @@ public class FilkArchiveGoogleSheet
         return response.getValues().get(0);
     }
 
-    private Map<String, Integer> getColumns(int sheetId, int size)
+    private Map<String, Integer> getColumns(int sheetId)
         throws IOException
     {
         Map<String, Integer> columnLocations = new HashMap<>();
@@ -232,7 +232,7 @@ public class FilkArchiveGoogleSheet
 
         List<Object> columnHeaders = getColumnHeaders(sheetId);
 
-        Map<String, Integer> columnLocations = getColumns(sheetId, columnHeaders.size());
+        Map<String, Integer> columnLocations = getColumns(sheetId);
 
         for (i = 0; i < columnValues.size(); i++)
         {
@@ -298,7 +298,7 @@ public class FilkArchiveGoogleSheet
 
             columnHeaders = getColumnHeaders(sheetId);
 
-            columnLocations = getColumns(sheetId, columnHeaders.size());
+            columnLocations = getColumns(sheetId);
         }
 
         return columnLocations;
