@@ -182,7 +182,7 @@ public class FilkArchiveGoogleSheet
     {
         SheetProperties sheetProperties = getSheetProperties(sheetId);
 
-        String headersRange = coordinatesToRange(sheetProperties, 1, 1, sheetProperties.getGridProperties().getColumnCount(), 1);
+        String headersRange = coordinatesToRange(sheetProperties, 1, 1, sheetProperties.getGridProperties().getColumnCount() + 1, 1);
 
         ValueRange response = service.spreadsheets().values().get(SPREADSHEET_ID, headersRange).execute();
 
@@ -244,7 +244,7 @@ public class FilkArchiveGoogleSheet
             if (columnLocations.containsKey(columnId))
             {
                 int loc = columnLocations.get(columnId);
-                if (columnHeaders.get(loc).equals(description))
+                if (loc < columnHeaders.size() && columnHeaders.get(loc).equals(description))
                 {
                     continue;
                 }
@@ -302,5 +302,91 @@ public class FilkArchiveGoogleSheet
         }
 
         return columnLocations;
+    }
+
+    private List<FilkArchiveEntryIndex> getRows(int sheetId)
+        throws IOException
+    {
+        SearchDeveloperMetadataRequest metadataSearchRequest = new SearchDeveloperMetadataRequest();
+        List<DataFilter> filters = new ArrayList<>();
+        filters.add(new DataFilter().
+            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowPrimaryKey")));
+        filters.add(new DataFilter().
+            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowSecondaryKey")));
+        filters.add(new DataFilter().
+            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowTime")));
+
+        metadataSearchRequest.setDataFilters(filters);
+
+        SearchDeveloperMetadataResponse metadataSearchResult = service.spreadsheets().developerMetadata().search(SPREADSHEET_ID, metadataSearchRequest).execute();
+
+        List<String> primaryKeys = new ArrayList<>(), secondaryKeys = new ArrayList<>(), times = new ArrayList<>();
+
+        if (metadataSearchResult.getMatchedDeveloperMetadata() == null)
+        {
+            return new ArrayList<>();
+        }
+
+        for (MatchedDeveloperMetadata metadata : metadataSearchResult.getMatchedDeveloperMetadata())
+        {
+            DeveloperMetadata data = metadata.getDeveloperMetadata();
+            if (data.getLocation().getDimensionRange().getSheetId() != sheetId)
+            {
+                continue;
+            }
+            if (!data.getLocation().getLocationType().equals("ROW"))
+            {
+                throw new RuntimeException("Surprising metadata data location " + data.getLocation().getLocationType() +
+                    "for " + data.getMetadataKey() + "=" + data.getMetadataValue());
+            }
+            List<String> array;
+            int index = data.getLocation().getDimensionRange().getStartIndex();
+            switch (data.getMetadataKey())
+            {
+            case "rowPrimaryKey":
+                array = primaryKeys;
+                break;
+            case "rowSecondaryKey":
+                array = secondaryKeys;
+                break;
+            case "rowTime":
+                array = times;
+                break;
+            default:
+                throw new RuntimeException(
+                    "Surprising metadata key " + data.getMetadataKey());
+            }
+
+            if (index < array.size())
+            {
+                array.set(index, data.getMetadataValue());
+            }
+            else
+            {
+                array.add(index, data.getMetadataValue());
+            }
+        }
+
+        int minSize = Math.min(primaryKeys.size(), Math.min(secondaryKeys.size(), times.size()));
+        List<FilkArchiveEntryIndex> rows = new ArrayList<>(minSize);
+
+        int i;
+        for (i = 0; i < minSize; i++)
+        {
+            if (primaryKeys.get(i) != null && secondaryKeys.get(i) != null && times.get(i) != null) {
+                rows.add(i, new FilkArchiveEntryIndex(primaryKeys.get(i), secondaryKeys.get(i), times.get(i)));
+            }
+        }
+
+        return rows;
+    }
+
+    public void addNewRows(int sheetId, NavigableMap<FilkArchiveEntryIndex, FilkArchiveEntry> entries, Map<String, Integer> columnMap)
+        throws IOException
+    {
+        ArrayList<Request> requests = new ArrayList<>();
+        int rowOffset = 0;
+
+        List<FilkArchiveEntryIndex> existingRows = getRows(sheetId);
     }
 }

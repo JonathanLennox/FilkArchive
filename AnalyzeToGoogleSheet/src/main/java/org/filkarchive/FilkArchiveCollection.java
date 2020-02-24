@@ -9,7 +9,7 @@ import java.util.function.*;
 
 abstract class FilkArchiveCollection
 {
-    final NavigableMap<String, NavigableMap<String, List<FilkArchiveEntry>>> entries =
+    final NavigableMap<FilkArchiveEntryIndex, FilkArchiveEntry> entries =
         new TreeMap<>();
 
     final TaskLabelMap taskLabels = new TaskLabelMap();
@@ -60,13 +60,13 @@ abstract class FilkArchiveCollection
     {
         FilkArchiveEntry entry = getEntryFromClassification(classification);
 
-        NavigableMap<String, List<FilkArchiveEntry>> map1 =
-            entries.computeIfAbsent(entry.getPrimaryKey(), k -> new TreeMap<>());
+        FilkArchiveEntryIndex index = new FilkArchiveEntryIndex(entry.getPrimaryKey(), entry.getSecondaryKey(), entry.time);
 
-        List<FilkArchiveEntry> list =
-            map1.computeIfAbsent(entry.getSecondaryKey(), k -> new ArrayList<>());
-
-        list.add(entry);
+        if (entries.containsKey(index))
+        {
+            throw new IllegalArgumentException("Duplicate entry with index " + index);
+        }
+        entries.put(index, entry);
 
         taskLabels.updateTaskLabels(classification);
     }
@@ -79,5 +79,7 @@ abstract class FilkArchiveCollection
         int sheetId = googleSheet.getOrAddSheet(getSheetName());
 
         Map<String, Integer> columns = googleSheet.setColumns(sheetId, getColumns(), this::getColumnDescription);
+
+        googleSheet.addNewRows(sheetId, entries, columns);
     }
 }
