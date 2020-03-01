@@ -315,12 +315,14 @@ public class FilkArchiveGoogleSheet
             setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowSecondaryKey")));
         filters.add(new DataFilter().
             setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowTime")));
+        filters.add(new DataFilter().
+            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowHeader")));
 
         metadataSearchRequest.setDataFilters(filters);
 
         SearchDeveloperMetadataResponse metadataSearchResult = service.spreadsheets().developerMetadata().search(SPREADSHEET_ID, metadataSearchRequest).execute();
 
-        List<String> primaryKeys = new ArrayList<>(), secondaryKeys = new ArrayList<>(), times = new ArrayList<>();
+        List<String> primaryKeys = new ArrayList<>(), secondaryKeys = new ArrayList<>(), times = new ArrayList<>(), header = new ArrayList<>();
 
         if (metadataSearchResult.getMatchedDeveloperMetadata() == null)
         {
@@ -352,19 +354,20 @@ public class FilkArchiveGoogleSheet
             case "rowTime":
                 array = times;
                 break;
+            case "rowHeader":
+                array = header;
+                break;
             default:
                 throw new RuntimeException(
                     "Surprising metadata key " + data.getMetadataKey());
             }
 
-            if (index < array.size())
+            if (index >= array.size())
             {
-                array.set(index, data.getMetadataValue());
+                array.addAll(Collections.nCopies(index - array.size() + 1, null));
             }
-            else
-            {
-                array.add(index, data.getMetadataValue());
-            }
+
+            array.set(index, data.getMetadataValue());
         }
 
         int minSize = Math.min(primaryKeys.size(), Math.min(secondaryKeys.size(), times.size()));
@@ -376,9 +379,86 @@ public class FilkArchiveGoogleSheet
             if (primaryKeys.get(i) != null && secondaryKeys.get(i) != null && times.get(i) != null) {
                 rows.add(i, new FilkArchiveEntryIndex(primaryKeys.get(i), secondaryKeys.get(i), times.get(i)));
             }
+            else if (primaryKeys.get(i) != null && header.get(i) != null)
+            {
+                rows.add(i, new FilkArchiveEntryIndex(primaryKeys.get(i), null, null));
+            }
+            else
+            {
+                throw new IllegalStateException("No metadata on row " + i);
+            }
         }
 
         return rows;
+    }
+
+    private void insertHeader(ArrayList<Request> requests, int sheetId, int loc, String primaryKey)
+    {
+        InsertDimensionRequest insertDimension = new InsertDimensionRequest().
+            setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
+        requests.add(new Request().setInsertDimension(insertDimension));
+
+        CreateDeveloperMetadataRequest createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
+            setMetadataKey("rowPrimaryKey").setMetadataValue(primaryKey).setLocation(new DeveloperMetadataLocation().
+            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
+        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
+
+        createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
+            setMetadataKey("rowHeader").setMetadataValue("").setLocation(new DeveloperMetadataLocation().
+            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
+        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
+    }
+
+    private void insertRow(ArrayList<Request> requests, int sheetId, int loc, FilkArchiveEntryIndex index, FilkArchiveEntry entry, Map<String, Integer> columnMap)
+    {
+        InsertDimensionRequest insertDimension = new InsertDimensionRequest().
+            setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
+        requests.add(new Request().setInsertDimension(insertDimension));
+
+        CreateDeveloperMetadataRequest createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
+            setMetadataKey("rowPrimaryKey").setMetadataValue(index.primaryKey).setLocation(new DeveloperMetadataLocation().
+            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
+        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
+
+        createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
+            setMetadataKey("rowSecondaryKey").setMetadataValue(index.secondaryKey).setLocation(new DeveloperMetadataLocation().
+            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
+        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
+
+        createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
+            setMetadataKey("rowTime").setMetadataValue(index.time).setLocation(new DeveloperMetadataLocation().
+            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
+        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
+
+        ArrayList<CellData> row = new ArrayList<>();
+
+        for (Map.Entry<String, Integer> column: columnMap.entrySet())
+        {
+            int columnId = column.getValue();
+
+            String data = entry.getColumnValue(column.getKey());
+            if (data == null)
+            {
+                continue;
+            }
+
+            CellData cell = new CellData().setUserEnteredValue(new ExtendedValue().setStringValue(data));
+
+            if (columnId >= row.size())
+            {
+                row.addAll(Collections.nCopies(columnId - row.size() + 1, null));
+            }
+
+            row.set(columnId, cell);
+        }
+
+        UpdateCellsRequest update = new UpdateCellsRequest().setRows(Collections.singletonList(
+            new RowData().setValues(row))).
+            setFields("*").
+            setStart(new GridCoordinate().setColumnIndex(0).setRowIndex(loc).setSheetId(sheetId));
+        requests.add(new Request().setUpdateCells(update));
+
+        /* TODO: color */
     }
 
     public void addNewRows(int sheetId, NavigableMap<FilkArchiveEntryIndex, FilkArchiveEntry> entries, Map<String, Integer> columnMap)
@@ -388,5 +468,40 @@ public class FilkArchiveGoogleSheet
         int rowOffset = 0;
 
         List<FilkArchiveEntryIndex> existingRows = getRows(sheetId);
+
+        FilkArchiveEntryIndex lastIndex = null;
+
+        for (Map.Entry<FilkArchiveEntryIndex, FilkArchiveEntry> entry: entries.entrySet())
+        {
+            FilkArchiveEntryIndex key = entry.getKey();
+            int index = Collections.binarySearch(existingRows, key);
+            if (index >= 0)
+            {
+                /* Entry is already in sheet */
+                lastIndex = null;
+                continue;
+            }
+
+            int insertionPoint = -index - 1;
+
+            if (!((lastIndex != null && lastIndex.primaryKey.equals(key.primaryKey)) ||
+                (insertionPoint < existingRows.size() && existingRows.get(insertionPoint).primaryKey.equals(key.primaryKey))))
+            {
+                insertHeader(requests, sheetId, insertionPoint + rowOffset, key.primaryKey);
+                rowOffset++;
+            }
+
+            insertRow(requests, sheetId,insertionPoint + rowOffset, key, entry.getValue(), columnMap);
+            rowOffset++;
+            lastIndex = key;
+        }
+
+        BatchUpdateSpreadsheetRequest body
+            = new BatchUpdateSpreadsheetRequest().setRequests(requests);
+
+        BatchUpdateSpreadsheetResponse batchResponse =
+            service.spreadsheets().batchUpdate(SPREADSHEET_ID, body).execute();
+
+        batchResponse.size();
     }
 }

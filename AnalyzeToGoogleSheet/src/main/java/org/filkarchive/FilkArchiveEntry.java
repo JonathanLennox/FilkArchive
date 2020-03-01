@@ -59,7 +59,7 @@ abstract class FilkArchiveEntry
         }
         else
         {
-            throw new IllegalArgumentException("Unknown column label " + column);
+            return null;
         }
     }
 }

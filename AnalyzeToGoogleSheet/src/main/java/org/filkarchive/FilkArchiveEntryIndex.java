@@ -1,5 +1,7 @@
 package org.filkarchive;
 
+import java.util.*;
+
 public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
 {
     public String primaryKey;
@@ -14,6 +16,8 @@ public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
         this.time = time;
     }
 
+    private static Comparator<String> comp = Comparator.nullsFirst(String::compareTo);
+
     @Override
     public int compareTo(FilkArchiveEntryIndex o)
     {
@@ -22,10 +26,10 @@ public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
         if ((cmp = primaryKey.compareTo(o.primaryKey)) != 0)
             return cmp;
 
-        if ((cmp = secondaryKey.compareTo(o.secondaryKey)) != 0)
+        if ((cmp = comp.compare(secondaryKey, o.secondaryKey)) != 0)
             return cmp;
 
-        return time.compareTo(o.time);
+        return comp.compare(time, o.time);
     }
 
     @Override
@@ -36,13 +40,17 @@ public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
 
         FilkArchiveEntryIndex i = (FilkArchiveEntryIndex)o;
         return primaryKey.equals(i.primaryKey) &&
-            secondaryKey.equals(i.secondaryKey) &&
-            time.equals(i.time);
+            comp.compare(secondaryKey, i.secondaryKey) == 0 &&
+            comp.compare(time, i.time) == 0;
     }
 
     @Override
     public String toString()
     {
+        if (secondaryKey == null && time == null)
+        {
+            return "primaryKey -HEADER-";
+        }
         return primaryKey + "/" + secondaryKey + "@" + time;
     }
 }
