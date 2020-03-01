@@ -149,7 +149,7 @@ public class FilkArchiveGoogleSheet
         while (column > 0)
         {
             int rem = column % 26;
-            column = column / 26 - 1;
+            column = column / 26;
             if (rem == 0)
             {
                 builder.append('Z');
