@@ -473,7 +473,7 @@ public class FilkArchiveGoogleSheet
             int insertionPoint = -index - 1;
 
             if (!((lastIndex != null && lastIndex.primaryKey.equals(key.primaryKey)) ||
-                (insertionPoint < existingRows.size() && existingRows.get(insertionPoint).primaryKey.equals(key.primaryKey))))
+                (insertionPoint > 0 && insertionPoint - 1 < existingRows.size() && existingRows.get(insertionPoint - 1).primaryKey.equals(key.primaryKey))))
             {
                 insertSeparator(requests, sheetId, insertionPoint + rowOffset, key.primaryKey);
                 rowOffset++;
