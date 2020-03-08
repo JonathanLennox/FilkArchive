@@ -394,14 +394,14 @@ public class FilkArchiveGoogleSheet
 
     private void insertSeparator(ArrayList<Request> requests, int sheetId, int loc, String primaryKey)
     {
-        InsertDimensionRequest insertDimension = new InsertDimensionRequest().
+        InsertDimensionRequest insertDimension = new InsertDimensionRequest().setInheritFromBefore(loc > 0).
             setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
         requests.add(new Request().setInsertDimension(insertDimension));
     }
 
     private void insertRow(ArrayList<Request> requests, int sheetId, int loc, FilkArchiveEntryIndex index, FilkArchiveEntry entry, Map<String, Integer> columnMap)
     {
-        InsertDimensionRequest insertDimension = new InsertDimensionRequest().
+        InsertDimensionRequest insertDimension = new InsertDimensionRequest().setInheritFromBefore(loc > 0).
             setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
         requests.add(new Request().setInsertDimension(insertDimension));
 
