@@ -22,18 +22,6 @@ class FilkArchiveAudioEntry
     }
 
     @Override
-    String getPrimaryKey()
-    {
-        return origfile;
-    }
-
-    @Override
-    String getSecondaryKey()
-    {
-        return clipstart;
-    }
-
-    @Override
     public String getColumnValue(String column)
     {
         switch (column)

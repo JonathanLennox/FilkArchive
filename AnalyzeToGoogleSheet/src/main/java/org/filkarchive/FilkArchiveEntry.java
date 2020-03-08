@@ -39,10 +39,6 @@ abstract class FilkArchiveEntry
         }
     }
 
-    abstract String getPrimaryKey();
-
-    abstract String getSecondaryKey();
-
     public String getColumnValue(String column)
     {
         if (column.equals("user"))

@@ -47,5 +47,41 @@ public class FilkArchiveAudioCollection extends FilkArchiveCollection
         }
     }
 
+    @Override
+    public String getPrimaryKeyColumn()
+    {
+        return "file";
+    }
 
+    @Override
+    public String getSecondaryKeyColumn()
+    {
+        return "cliptime";
+    }
+
+    private String trimClipTime(String cliptime)
+    {
+        int idx = cliptime.indexOf(' ');
+        if (idx == -1)
+        {
+            return cliptime;
+        }
+        return cliptime.substring(0, idx);
+    }
+
+    @Override
+    public int secondaryKeyComparator(String a, String b)
+    {
+        String clipstart1 = trimClipTime(a);
+        String clipstart2 = trimClipTime(b);
+
+        /* Sort by length first; then sort lexicographically within lengths.
+          This will achieve a numeric sort.
+         */
+        if (clipstart1.length() != clipstart2.length())
+        {
+            return Integer.compare(clipstart1.length(), clipstart2.length());
+        }
+        return clipstart1.compareTo(clipstart2);
+    }
 }

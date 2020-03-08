@@ -44,4 +44,22 @@ public class FilkArchiveFileCollection
             return super.getColumnDescription(label);
         }
     }
+
+    @Override
+    public String getPrimaryKeyColumn()
+    {
+        return "source";
+    }
+
+    @Override
+    public String getSecondaryKeyColumn()
+    {
+        return "file";
+    }
+
+    @Override
+    public int secondaryKeyComparator(String a, String b)
+    {
+        return a.compareTo(b);
+    }
 }

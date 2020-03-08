@@ -15,18 +15,6 @@ class FilkArchiveFileEntry
     }
 
     @Override
-    String getPrimaryKey()
-    {
-        return source;
-    }
-
-    @Override
-    String getSecondaryKey()
-    {
-        return file;
-    }
-
-    @Override
     public String getColumnValue(String column)
     {
         switch (column)
@@ -38,5 +26,4 @@ class FilkArchiveFileEntry
         }
         return super.getColumnValue(column);
     }
-
 }

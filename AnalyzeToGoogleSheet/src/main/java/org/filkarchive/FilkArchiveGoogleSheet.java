@@ -141,15 +141,17 @@ public class FilkArchiveGoogleSheet
 
     private static String toColumn(int column)
     {
-        if (column <= 0) {
-            throw new IllegalArgumentException("Bad column value " + column);
+        int column1 = column + 1;
+
+        if (column1 <= 0) {
+            throw new IllegalArgumentException("Bad column value " + column1);
         }
         StringBuilder builder = new StringBuilder();
 
-        while (column > 0)
+        while (column1 > 0)
         {
-            int rem = column % 26;
-            column = column / 26;
+            int rem = column1 % 26;
+            column1 = column1 / 26;
             if (rem == 0)
             {
                 builder.append('Z');
@@ -162,16 +164,19 @@ public class FilkArchiveGoogleSheet
         return builder.reverse().toString();
     }
 
+    /**
+     * Convert an indexed range (0-based) to A1 range notation.
+     */
     private static String coordinatesToRange(SheetProperties sheetProperties, int startColumn, int startRow, int endColumn, int endRow)
     {
         StringBuilder builder = new StringBuilder(sheetProperties.getTitle()).append('!');
 
-        builder.append(toColumn(startColumn)).append(startRow);
+        builder.append(toColumn(startColumn)).append(startRow+1);
 
         if (startRow != endRow || startColumn != endColumn)
         {
             builder.append(":");
-            builder.append(toColumn(endColumn)).append(endRow);
+            builder.append(toColumn(endColumn)).append(endRow+1);
         }
 
         return builder.toString();
@@ -182,7 +187,7 @@ public class FilkArchiveGoogleSheet
     {
         SheetProperties sheetProperties = getSheetProperties(sheetId);
 
-        String headersRange = coordinatesToRange(sheetProperties, 1, 1, sheetProperties.getGridProperties().getColumnCount() + 1, 1);
+        String headersRange = coordinatesToRange(sheetProperties, 0, 0, sheetProperties.getGridProperties().getColumnCount() - 1, 0);
 
         ValueRange response = service.spreadsheets().values().get(SPREADSHEET_ID, headersRange).execute();
 
@@ -248,8 +253,13 @@ public class FilkArchiveGoogleSheet
                 {
                     continue;
                 }
+                CellFormat format = new CellFormat().setTextFormat(new TextFormat().setBold(true));
+                format.setWrapStrategy("WRAP");
+                format.setVerticalAlignment("TOP");
+                CellData cell = new CellData().setUserEnteredValue(new ExtendedValue().setStringValue(description));
+                cell.setUserEnteredFormat(format);
                 UpdateCellsRequest update = new UpdateCellsRequest().setRows(Collections.singletonList(
-                    new RowData().setValues(Collections.singletonList(new CellData().setUserEnteredValue(new ExtendedValue().setStringValue(description)))))).
+                    new RowData().setValues(Collections.singletonList(cell)))).
                     setFields("*").
                     setStart(new GridCoordinate().setColumnIndex(loc).setRowIndex(0).setSheetId(sheetId));
                 requests.add(new Request().setUpdateCells(update));
@@ -304,109 +314,89 @@ public class FilkArchiveGoogleSheet
         return columnLocations;
     }
 
-    private List<FilkArchiveEntryIndex> getRows(int sheetId)
+    private int numRows(GridData data)
+    {
+        if (data.getRowData() == null)
+            return 0;
+        return data.getRowData().size();
+    }
+
+    private String getUserEnteredValue(GridData data, int row, int column)
+    {
+        if (data.getRowData() == null)
+            return null;
+        if (row >= data.getRowData().size())
+            return null;
+        RowData rowData = data.getRowData().get(row);
+        if (rowData == null || rowData.getValues() == null)
+            return null;
+        if (column >= rowData.getValues().size())
+            return null;
+        CellData cell = rowData.getValues().get(column);
+        if (cell.getUserEnteredValue() == null)
+            return null;
+        return cell.getUserEnteredValue().getStringValue();
+    }
+
+    private List<FilkArchiveEntryIndex> getRows(int sheetId, int primaryKeyColumn, int secondaryKeyColumn, int timeColumn, Comparator<String> secondaryKeyComparator)
         throws IOException
     {
-        SearchDeveloperMetadataRequest metadataSearchRequest = new SearchDeveloperMetadataRequest();
-        List<DataFilter> filters = new ArrayList<>();
-        filters.add(new DataFilter().
-            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowPrimaryKey")));
-        filters.add(new DataFilter().
-            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowSecondaryKey")));
-        filters.add(new DataFilter().
-            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowTime")));
-        filters.add(new DataFilter().
-            setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("rowHeader")));
+        SheetProperties sheetProperties = getSheetProperties(sheetId);
 
-        metadataSearchRequest.setDataFilters(filters);
+        ArrayList<String> ranges = new ArrayList<>();
 
-        SearchDeveloperMetadataResponse metadataSearchResult = service.spreadsheets().developerMetadata().search(SPREADSHEET_ID, metadataSearchRequest).execute();
+        ranges.add(coordinatesToRange(sheetProperties, primaryKeyColumn, 1, primaryKeyColumn, sheetProperties.getGridProperties().getRowCount()));
+        ranges.add(coordinatesToRange(sheetProperties, secondaryKeyColumn, 1, secondaryKeyColumn, sheetProperties.getGridProperties().getRowCount()));
+        ranges.add(coordinatesToRange(sheetProperties, timeColumn, 1, timeColumn, sheetProperties.getGridProperties().getRowCount()));
 
-        List<String> primaryKeys = new ArrayList<>(), secondaryKeys = new ArrayList<>(), times = new ArrayList<>(), header = new ArrayList<>();
+        Spreadsheet response = service.spreadsheets().get(SPREADSHEET_ID).setRanges(ranges).
+            setFields("sheets.data.rowData.values.userEnteredValue,sheets.data.rowMetadata.developerMetadata").
+            execute();
 
-        if (metadataSearchResult.getMatchedDeveloperMetadata() == null)
-        {
-            return new ArrayList<>();
-        }
+        GridData primaryKeyData   = response.getSheets().get(0).getData().get(0);
+        GridData secondaryKeyData = response.getSheets().get(0).getData().get(1);
+        GridData timeData         = response.getSheets().get(0).getData().get(2);
 
-        for (MatchedDeveloperMetadata metadata : metadataSearchResult.getMatchedDeveloperMetadata())
-        {
-            DeveloperMetadata data = metadata.getDeveloperMetadata();
-            if (data.getLocation().getDimensionRange().getSheetId() != sheetId)
-            {
-                continue;
-            }
-            if (!data.getLocation().getLocationType().equals("ROW"))
-            {
-                throw new RuntimeException("Surprising metadata data location " + data.getLocation().getLocationType() +
-                    "for " + data.getMetadataKey() + "=" + data.getMetadataValue());
-            }
-            List<String> array;
-            int index = data.getLocation().getDimensionRange().getStartIndex();
-            switch (data.getMetadataKey())
-            {
-            case "rowPrimaryKey":
-                array = primaryKeys;
-                break;
-            case "rowSecondaryKey":
-                array = secondaryKeys;
-                break;
-            case "rowTime":
-                array = times;
-                break;
-            case "rowHeader":
-                array = header;
-                break;
-            default:
-                throw new RuntimeException(
-                    "Surprising metadata key " + data.getMetadataKey());
-            }
-
-            if (index >= array.size())
-            {
-                array.addAll(Collections.nCopies(index - array.size() + 1, null));
-            }
-
-            array.set(index, data.getMetadataValue());
-        }
-
-        int minSize = Math.min(primaryKeys.size(), Math.min(secondaryKeys.size(), times.size()));
-        List<FilkArchiveEntryIndex> rows = new ArrayList<>(minSize);
+        int minSize = Math.min(numRows(primaryKeyData), Math.min(numRows(secondaryKeyData), numRows(timeData)));
+        List<FilkArchiveEntryIndex> rows = new ArrayList<>(Collections.nCopies(minSize + 1, null));
 
         int i;
         for (i = 0; i < minSize; i++)
         {
-            if (primaryKeys.get(i) != null && secondaryKeys.get(i) != null && times.get(i) != null) {
-                rows.add(i, new FilkArchiveEntryIndex(primaryKeys.get(i), secondaryKeys.get(i), times.get(i)));
+            String primaryKey   = getUserEnteredValue(primaryKeyData, i, 0);
+            String secondaryKey = getUserEnteredValue(secondaryKeyData, i, 0);
+            String time         = getUserEnteredValue(timeData, i, 0);
+
+            if (primaryKey != null && secondaryKey != null && time != null) {
+                rows.set(i, new FilkArchiveEntryIndex(primaryKey, secondaryKey, time, secondaryKeyComparator));
             }
-            else if (primaryKeys.get(i) != null && header.get(i) != null)
+        }
+
+        for (i = 0; i < rows.size(); i++)
+        {
+            if (rows.get(i) == null)
             {
-                rows.add(i, new FilkArchiveEntryIndex(primaryKeys.get(i), null, null));
+                if (i + 1 < rows.size() && rows.get(i + 1) != null)
+                {
+                    FilkArchiveEntryIndex nextRow = rows.get(i + 1);
+                    rows.set(i, new FilkArchiveEntryIndex(nextRow.primaryKey, null, null, secondaryKeyComparator));
+                }
             }
-            else
-            {
-                throw new IllegalStateException("No metadata on row " + i);
-            }
+        }
+
+        while (rows.size() > 0 && rows.get(rows.size() - 1) == null)
+        {
+            rows.remove(rows.size() - 1);
         }
 
         return rows;
     }
 
-    private void insertHeader(ArrayList<Request> requests, int sheetId, int loc, String primaryKey)
+    private void insertSeparator(ArrayList<Request> requests, int sheetId, int loc, String primaryKey)
     {
         InsertDimensionRequest insertDimension = new InsertDimensionRequest().
             setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
         requests.add(new Request().setInsertDimension(insertDimension));
-
-        CreateDeveloperMetadataRequest createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
-            setMetadataKey("rowPrimaryKey").setMetadataValue(primaryKey).setLocation(new DeveloperMetadataLocation().
-            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
-        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
-
-        createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
-            setMetadataKey("rowHeader").setMetadataValue("").setLocation(new DeveloperMetadataLocation().
-            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
-        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
     }
 
     private void insertRow(ArrayList<Request> requests, int sheetId, int loc, FilkArchiveEntryIndex index, FilkArchiveEntry entry, Map<String, Integer> columnMap)
@@ -415,20 +405,7 @@ public class FilkArchiveGoogleSheet
             setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
         requests.add(new Request().setInsertDimension(insertDimension));
 
-        CreateDeveloperMetadataRequest createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
-            setMetadataKey("rowPrimaryKey").setMetadataValue(index.primaryKey).setLocation(new DeveloperMetadataLocation().
-            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
-        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
-
-        createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
-            setMetadataKey("rowSecondaryKey").setMetadataValue(index.secondaryKey).setLocation(new DeveloperMetadataLocation().
-            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
-        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
-
-        createMetadata = new CreateDeveloperMetadataRequest().setDeveloperMetadata(new DeveloperMetadata().
-            setMetadataKey("rowTime").setMetadataValue(index.time).setLocation(new DeveloperMetadataLocation().
-            setDimensionRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1))).setVisibility("DOCUMENT"));
-        requests.add(new Request().setCreateDeveloperMetadata(createMetadata));
+        CellFormat cellFormat = new CellFormat().setTextFormat(new TextFormat().setForegroundColorStyle(new ColorStyle().setThemeColor("ACCENT2")));
 
         ArrayList<CellData> row = new ArrayList<>();
 
@@ -444,10 +421,13 @@ public class FilkArchiveGoogleSheet
 
             CellData cell = new CellData().setUserEnteredValue(new ExtendedValue().setStringValue(data));
 
+            cell.setUserEnteredFormat(cellFormat);
+
             if (columnId >= row.size())
             {
                 row.addAll(Collections.nCopies(columnId - row.size() + 1, null));
             }
+
 
             row.set(columnId, cell);
         }
@@ -457,17 +437,25 @@ public class FilkArchiveGoogleSheet
             setFields("*").
             setStart(new GridCoordinate().setColumnIndex(0).setRowIndex(loc).setSheetId(sheetId));
         requests.add(new Request().setUpdateCells(update));
-
-        /* TODO: color */
     }
 
-    public void addNewRows(int sheetId, NavigableMap<FilkArchiveEntryIndex, FilkArchiveEntry> entries, Map<String, Integer> columnMap)
+    public void addNewRows(int sheetId,
+        NavigableMap<FilkArchiveEntryIndex, FilkArchiveEntry> entries,
+        Map<String, Integer> columnMap,
+        String primaryKeyColumnId,
+        String secondaryKeyColumnId,
+        Comparator<String> secondaryKeyComparator)
         throws IOException
     {
         ArrayList<Request> requests = new ArrayList<>();
-        int rowOffset = 0;
+        int rowOffset = 1;
 
-        List<FilkArchiveEntryIndex> existingRows = getRows(sheetId);
+        List<FilkArchiveEntryIndex> existingRows =
+            getRows(sheetId,
+                columnMap.get(primaryKeyColumnId),
+                columnMap.get(secondaryKeyColumnId),
+                columnMap.get("time"),
+                secondaryKeyComparator);
 
         FilkArchiveEntryIndex lastIndex = null;
 
@@ -487,13 +475,18 @@ public class FilkArchiveGoogleSheet
             if (!((lastIndex != null && lastIndex.primaryKey.equals(key.primaryKey)) ||
                 (insertionPoint < existingRows.size() && existingRows.get(insertionPoint).primaryKey.equals(key.primaryKey))))
             {
-                insertHeader(requests, sheetId, insertionPoint + rowOffset, key.primaryKey);
+                insertSeparator(requests, sheetId, insertionPoint + rowOffset, key.primaryKey);
                 rowOffset++;
             }
 
             insertRow(requests, sheetId,insertionPoint + rowOffset, key, entry.getValue(), columnMap);
             rowOffset++;
             lastIndex = key;
+        }
+
+        if (requests.isEmpty())
+        {
+            return;
         }
 
         BatchUpdateSpreadsheetRequest body

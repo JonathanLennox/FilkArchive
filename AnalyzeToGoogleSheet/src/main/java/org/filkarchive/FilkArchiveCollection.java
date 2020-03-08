@@ -51,6 +51,12 @@ abstract class FilkArchiveCollection
         }
     }
 
+    public abstract String getPrimaryKeyColumn();
+
+    public abstract String getSecondaryKeyColumn();
+
+    public abstract int secondaryKeyComparator(String a, String b);
+
     protected void addSpecificColumns(List<String> columns)
     {
     }
@@ -60,7 +66,10 @@ abstract class FilkArchiveCollection
     {
         FilkArchiveEntry entry = getEntryFromClassification(classification);
 
-        FilkArchiveEntryIndex index = new FilkArchiveEntryIndex(entry.getPrimaryKey(), entry.getSecondaryKey(), entry.time);
+        FilkArchiveEntryIndex index = new FilkArchiveEntryIndex(entry.getColumnValue(getPrimaryKeyColumn()),
+            entry.getColumnValue(getSecondaryKeyColumn()),
+            entry.time,
+            this::secondaryKeyComparator);
 
         if (entries.containsKey(index))
         {
@@ -80,6 +89,6 @@ abstract class FilkArchiveCollection
 
         Map<String, Integer> columns = googleSheet.setColumns(sheetId, getColumns(), this::getColumnDescription);
 
-        googleSheet.addNewRows(sheetId, entries, columns);
+        googleSheet.addNewRows(sheetId, entries, columns, getPrimaryKeyColumn(), getSecondaryKeyColumn(), this::secondaryKeyComparator);
     }
 }

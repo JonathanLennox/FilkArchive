@@ -9,14 +9,17 @@ public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
     public String time;
 
     public FilkArchiveEntryIndex(String primaryKey, String secondaryKey,
-        String time)
+        String time, Comparator<String> secondaryKeyComparator)
     {
         this.primaryKey = primaryKey;
         this.secondaryKey = secondaryKey;
         this.time = time;
+
+        this.secondaryComp = Comparator.nullsFirst(secondaryKeyComparator);
     }
 
-    private static Comparator<String> comp = Comparator.nullsFirst(String::compareTo);
+    private Comparator<String> secondaryComp;
+    private static Comparator<String> timeComp = Comparator.nullsFirst(String::compareTo);
 
     @Override
     public int compareTo(FilkArchiveEntryIndex o)
@@ -26,10 +29,10 @@ public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
         if ((cmp = primaryKey.compareTo(o.primaryKey)) != 0)
             return cmp;
 
-        if ((cmp = comp.compare(secondaryKey, o.secondaryKey)) != 0)
+        if ((cmp = secondaryComp.compare(secondaryKey, o.secondaryKey)) != 0)
             return cmp;
 
-        return comp.compare(time, o.time);
+        return timeComp.compare(time, o.time);
     }
 
     @Override
@@ -40,8 +43,8 @@ public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
 
         FilkArchiveEntryIndex i = (FilkArchiveEntryIndex)o;
         return primaryKey.equals(i.primaryKey) &&
-            comp.compare(secondaryKey, i.secondaryKey) == 0 &&
-            comp.compare(time, i.time) == 0;
+            secondaryComp.compare(secondaryKey, i.secondaryKey) == 0 &&
+            timeComp.compare(time, i.time) == 0;
     }
 
     @Override
@@ -49,7 +52,7 @@ public class FilkArchiveEntryIndex implements Comparable<FilkArchiveEntryIndex>
     {
         if (secondaryKey == null && time == null)
         {
-            return "primaryKey -HEADER-";
+            return primaryKey + " -HEADER-";
         }
         return primaryKey + "/" + secondaryKey + "@" + time;
     }
