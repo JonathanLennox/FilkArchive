@@ -5,12 +5,15 @@ import java.util.concurrent.*;
 
 public class EventPacer
 {
+    private final String label;
     private final Duration interval;
     private final Clock clock;
     private Instant lastEvent = Instant.MIN;
+    private int count = 0;
 
-    public EventPacer(Duration interval)
+    public EventPacer(String label, Duration interval)
     {
+        this.label = label;
         this.interval = interval;
         this.clock = Clock.systemUTC();
     }
@@ -28,5 +31,7 @@ public class EventPacer
         }
 
         lastEvent = now;
+        count++;
+        System.out.printf("\tpacer %s: %s: %d\n", label, now, count);
     }
 }

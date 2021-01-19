@@ -1,5 +1,6 @@
 package org.filkarchive;
 
+import com.google.api.client.googleapis.json.*;
 import com.opencsv.*;
 
 import java.io.*;
@@ -109,7 +110,8 @@ public class AnalyzeToGoogleSheet
             }
             catch (Exception e)
             {
-                System.err.printf("Error exporting %s: %s%n", sheetName, e.toString());
+                System.out.printf("Error exporting %s: %s", sheetName, e.toString());
+                e.printStackTrace();
             }
         }
     }
@@ -117,26 +119,38 @@ public class AnalyzeToGoogleSheet
     static void outputClassificationsToSplitSpreadsheet(
         List<FilkArchiveCollection> collections)
     {
+        int total = 0;
+        int count = 0;
         for (FilkArchiveCollection origCollection : collections)
         {
             Collection<FilkArchiveCollection> splitCollections = origCollection.splitByKey();
+            total += splitCollections.size();
 
             for (FilkArchiveCollection collection: splitCollections)
             {
+                count++;
                 String fileName = collection.getSplitFileName();
                 String sheetName = collection.getSplitSheetName();
                 try
                 {
-                    System.out.printf("Processing %s:%s\n", fileName, sheetName);
+                    System.out.printf("Processing %s:%s (%d/%d)\n", fileName, sheetName, count, total);
                     FilkArchiveGoogleSheet googleSheet = new FilkArchiveGoogleSheet(fileName);
 
                     collection.outputToSpreadsheet(googleSheet, sheetName);
                 }
+                catch (GoogleJsonResponseException e)
+                {
+                    System.out.printf("Error exporting %s:%s: ", fileName, sheetName);
+                    e.printStackTrace();
+                    if (e.getStatusCode() == 429) {
+                        /* Too many requests, stop. */
+                        return;
+                    }
+                }
                 catch (Exception e)
                 {
-                    System.err.printf("Error exporting %s:%s: %s%n", fileName, sheetName,
-                        e.toString());
-                    e.printStackTrace(System.err);
+                    System.out.printf("Error exporting %s:%s: ", fileName, sheetName);
+                    e.printStackTrace();
                 }
             }
         }

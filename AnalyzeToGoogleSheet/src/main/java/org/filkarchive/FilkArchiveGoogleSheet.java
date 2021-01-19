@@ -42,11 +42,6 @@ public class FilkArchiveGoogleSheet
 
     private final String spreadsheetId;
 
-    /* Sheets API allows only sixty read requests per minute per user. */
-    private static final EventPacer sheetsReadPacer = new EventPacer(Duration.ofSeconds(1));
-    /* Similarly for write requests. */
-    private static final EventPacer sheetsWritePacer = new EventPacer(Duration.ofSeconds(1));
-
     FilkArchiveGoogleSheet() throws IOException, InterruptedException, GeneralSecurityException
     {
         spreadsheetId = SINGLE_SPREADSHEET_ID;
@@ -149,8 +144,10 @@ public class FilkArchiveGoogleSheet
     private void refreshSheet()
         throws IOException, InterruptedException
     {
-        sheetsReadPacer.pace();
-        spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
+        spreadsheet =
+            ExponentialBackoff.execute( () ->
+                sheetsService.spreadsheets().get(spreadsheetId).execute()
+            );
     }
 
     public int getOrAddSheet(String name) throws IOException, InterruptedException
@@ -179,9 +176,10 @@ public class FilkArchiveGoogleSheet
             = new BatchUpdateSpreadsheetRequest().setRequests(requests);
         body.setIncludeSpreadsheetInResponse(true);
 
-        sheetsWritePacer.pace();
         BatchUpdateSpreadsheetResponse batchResponse =
-            sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute();
+            ExponentialBackoff.execute( () ->
+                sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute()
+            );
 
         spreadsheet = batchResponse.getUpdatedSpreadsheet();
 
@@ -253,9 +251,11 @@ public class FilkArchiveGoogleSheet
 
         String headersRange = coordinatesToRange(sheetProperties, 0, 0, sheetProperties.getGridProperties().getColumnCount() - 1, 0);
 
-        sheetsReadPacer.pace();
-        ValueRange response = sheetsService.spreadsheets().values().get(
-            spreadsheetId, headersRange).execute();
+        ValueRange response =
+            ExponentialBackoff.execute( () ->
+                sheetsService.spreadsheets().values().get(
+                    spreadsheetId, headersRange).execute()
+            );
 
         if (response.getValues() == null || response.getValues().size() == 0)
         {
@@ -273,9 +273,11 @@ public class FilkArchiveGoogleSheet
         metadataSearchRequest.setDataFilters(Collections.singletonList(new DataFilter().
             setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("columnId"))));
 
-        sheetsReadPacer.pace();
-        SearchDeveloperMetadataResponse metadataSearchResult = sheetsService.spreadsheets().developerMetadata().search(
-            spreadsheetId, metadataSearchRequest).execute();
+        SearchDeveloperMetadataResponse metadataSearchResult =
+            ExponentialBackoff.execute( () ->
+                sheetsService.spreadsheets().developerMetadata().search(
+                    spreadsheetId, metadataSearchRequest).execute()
+            );
 
         if (metadataSearchResult.getMatchedDeveloperMetadata() != null)
         {
@@ -357,9 +359,10 @@ public class FilkArchiveGoogleSheet
                                 = new BatchUpdateSpreadsheetRequest()
                                 .setRequests(requests);
 
-                            sheetsWritePacer.pace();
-                            sheetsService.spreadsheets()
-                                .batchUpdate(spreadsheetId, body).execute();
+                            ExponentialBackoff.execute( () ->
+                                sheetsService.spreadsheets()
+                                    .batchUpdate(spreadsheetId, body).execute()
+                            );
 
                             columnHeaders = getColumnHeaders(sheetId);
                             columnLocations = getColumns(sheetId);
@@ -402,9 +405,10 @@ public class FilkArchiveGoogleSheet
             BatchUpdateSpreadsheetRequest body
                 = new BatchUpdateSpreadsheetRequest().setRequests(requests);
 
-            sheetsWritePacer.pace();
-            sheetsService.spreadsheets().batchUpdate(spreadsheetId, body)
-                .execute();
+            ExponentialBackoff.execute( () ->
+                sheetsService.spreadsheets().batchUpdate(spreadsheetId, body)
+                    .execute()
+            );
             columnLocations = getColumns(sheetId);
         }
 
@@ -446,10 +450,12 @@ public class FilkArchiveGoogleSheet
         ranges.add(coordinatesToRange(sheetProperties, secondaryKeyColumn, 1, secondaryKeyColumn, sheetProperties.getGridProperties().getRowCount()));
         ranges.add(coordinatesToRange(sheetProperties, timeColumn, 1, timeColumn, sheetProperties.getGridProperties().getRowCount()));
 
-        sheetsReadPacer.pace();
-        Spreadsheet response = sheetsService.spreadsheets().get(spreadsheetId).setRanges(ranges).
-            setFields("sheets.data.rowData.values.userEnteredValue,sheets.data.rowMetadata.developerMetadata").
-            execute();
+        Spreadsheet response =
+            ExponentialBackoff.execute( () ->
+                sheetsService.spreadsheets().get(spreadsheetId).setRanges(ranges).
+                    setFields("sheets.data.rowData.values.userEnteredValue,sheets.data.rowMetadata.developerMetadata").
+                    execute()
+            );
 
         GridData primaryKeyData   = response.getSheets().get(0).getData().get(0);
         GridData secondaryKeyData = response.getSheets().get(0).getData().get(1);
@@ -590,9 +596,10 @@ public class FilkArchiveGoogleSheet
         BatchUpdateSpreadsheetRequest body
             = new BatchUpdateSpreadsheetRequest().setRequests(requests);
 
-        sheetsWritePacer.pace();
         BatchUpdateSpreadsheetResponse batchResponse =
-            sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute();
+            ExponentialBackoff.execute( () ->
+                sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute()
+            );
 
         batchResponse.size();
     }
