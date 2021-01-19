@@ -4,6 +4,7 @@ import com.opencsv.*;
 
 import java.io.*;
 import java.security.GeneralSecurityException;
+import java.time.*;
 import java.util.*;
 
 public class AnalyzeToGoogleSheet
@@ -17,9 +18,9 @@ public class AnalyzeToGoogleSheet
 
         readClassificationsToCollections(CLASSIFICATIONS_DATA_FILE, collections);
 
-        outputClassificationsToCombinedSpreadsheet(collections);
+//        outputClassificationsToCombinedSpreadsheet(collections);
 
-//        outputClassificationsToSplitSpreadsheet(collections);
+        outputClassificationsToSplitSpreadsheet(collections);
 
         System.out.println("done");
     }
@@ -95,7 +96,7 @@ public class AnalyzeToGoogleSheet
 
     static void outputClassificationsToCombinedSpreadsheet(
         List<FilkArchiveCollection> collections)
-        throws IOException, GeneralSecurityException
+        throws IOException, InterruptedException, GeneralSecurityException
     {
         FilkArchiveGoogleSheet googleSheet = new FilkArchiveGoogleSheet();
 

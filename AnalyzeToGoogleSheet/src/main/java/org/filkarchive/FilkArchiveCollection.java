@@ -18,7 +18,7 @@ abstract class FilkArchiveCollection
 
     public List<String> getColumns()
     {
-        List<String> columns = new ArrayList<String>();
+        List<String> columns = new ArrayList<>();
 
         columns.add("user");
         columns.add("time");
@@ -88,7 +88,7 @@ abstract class FilkArchiveCollection
     public abstract String getCombinedSheetName();
 
     public void outputToSpreadsheet(FilkArchiveGoogleSheet googleSheet, String sheetName) throws
-        IOException
+        IOException, InterruptedException
     {
         int sheetId = googleSheet.getOrAddSheet(sheetName);
 

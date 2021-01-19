@@ -17,6 +17,7 @@ import com.google.api.services.drive.*;
 import java.io.*;
 import java.io.File;
 import java.security.*;
+import java.time.*;
 import java.util.*;
 import java.util.function.*;
 
@@ -41,7 +42,12 @@ public class FilkArchiveGoogleSheet
 
     private final String spreadsheetId;
 
-    FilkArchiveGoogleSheet() throws IOException, GeneralSecurityException
+    /* Sheets API allows only sixty read requests per minute per user. */
+    private static final EventPacer sheetsReadPacer = new EventPacer(Duration.ofSeconds(1));
+    /* Similarly for write requests. */
+    private static final EventPacer sheetsWritePacer = new EventPacer(Duration.ofSeconds(1));
+
+    FilkArchiveGoogleSheet() throws IOException, InterruptedException, GeneralSecurityException
     {
         spreadsheetId = SINGLE_SPREADSHEET_ID;
 
@@ -55,7 +61,7 @@ public class FilkArchiveGoogleSheet
         refreshSheet();
     }
 
-    FilkArchiveGoogleSheet(String name) throws IOException, GeneralSecurityException
+    FilkArchiveGoogleSheet(String name) throws IOException, InterruptedException, GeneralSecurityException
     {
         final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
 
@@ -141,19 +147,13 @@ public class FilkArchiveGoogleSheet
     }
 
     private void refreshSheet()
+        throws IOException, InterruptedException
     {
-        try
-        {
-            spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
-        }
-        catch (Exception e)
-        {
-            System.err.printf("Error getting Google Sheet: %s%n", e.toString());
-            e.printStackTrace(System.err);
-        }
+        sheetsReadPacer.pace();
+        spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
     }
 
-    public int getOrAddSheet(String name) throws IOException
+    public int getOrAddSheet(String name) throws IOException, InterruptedException
     {
         for (Sheet sheet: spreadsheet.getSheets())
         {
@@ -166,7 +166,7 @@ public class FilkArchiveGoogleSheet
         return addSheet(name);
     }
 
-    public int addSheet(String name) throws IOException
+    public int addSheet(String name) throws IOException, InterruptedException
     {
         AddSheetRequest addSheetRequest = new AddSheetRequest();
         addSheetRequest.setProperties(new SheetProperties().setTitle(name));
@@ -179,6 +179,7 @@ public class FilkArchiveGoogleSheet
             = new BatchUpdateSpreadsheetRequest().setRequests(requests);
         body.setIncludeSpreadsheetInResponse(true);
 
+        sheetsWritePacer.pace();
         BatchUpdateSpreadsheetResponse batchResponse =
             sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute();
 
@@ -246,12 +247,13 @@ public class FilkArchiveGoogleSheet
     }
 
     private List<Object> getColumnHeaders(int sheetId)
-        throws IOException
+        throws IOException, InterruptedException
     {
         SheetProperties sheetProperties = getSheetProperties(sheetId);
 
         String headersRange = coordinatesToRange(sheetProperties, 0, 0, sheetProperties.getGridProperties().getColumnCount() - 1, 0);
 
+        sheetsReadPacer.pace();
         ValueRange response = sheetsService.spreadsheets().values().get(
             spreadsheetId, headersRange).execute();
 
@@ -263,7 +265,7 @@ public class FilkArchiveGoogleSheet
     }
 
     private Map<String, Integer> getColumns(int sheetId)
-        throws IOException
+        throws IOException, InterruptedException
     {
         Map<String, Integer> columnLocations = new HashMap<>();
 
@@ -271,6 +273,7 @@ public class FilkArchiveGoogleSheet
         metadataSearchRequest.setDataFilters(Collections.singletonList(new DataFilter().
             setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("columnId"))));
 
+        sheetsReadPacer.pace();
         SearchDeveloperMetadataResponse metadataSearchResult = sheetsService.spreadsheets().developerMetadata().search(
             spreadsheetId, metadataSearchRequest).execute();
 
@@ -296,7 +299,7 @@ public class FilkArchiveGoogleSheet
     }
 
     public Map<String, Integer> setColumns(int sheetId, List<String> columnValues, Function<String, String> describe)
-        throws IOException
+        throws IOException, InterruptedException
     {
         int i;
 
@@ -354,6 +357,7 @@ public class FilkArchiveGoogleSheet
                                 = new BatchUpdateSpreadsheetRequest()
                                 .setRequests(requests);
 
+                            sheetsWritePacer.pace();
                             sheetsService.spreadsheets()
                                 .batchUpdate(spreadsheetId, body).execute();
 
@@ -398,8 +402,10 @@ public class FilkArchiveGoogleSheet
             BatchUpdateSpreadsheetRequest body
                 = new BatchUpdateSpreadsheetRequest().setRequests(requests);
 
+            sheetsWritePacer.pace();
             sheetsService.spreadsheets().batchUpdate(spreadsheetId, body)
                 .execute();
+            columnLocations = getColumns(sheetId);
         }
 
         return columnLocations;
@@ -430,7 +436,7 @@ public class FilkArchiveGoogleSheet
     }
 
     private List<FilkArchiveEntryIndex> getRows(int sheetId, int primaryKeyColumn, int secondaryKeyColumn, int timeColumn, Comparator<String> secondaryKeyComparator)
-        throws IOException
+        throws IOException, InterruptedException
     {
         SheetProperties sheetProperties = getSheetProperties(sheetId);
 
@@ -440,6 +446,7 @@ public class FilkArchiveGoogleSheet
         ranges.add(coordinatesToRange(sheetProperties, secondaryKeyColumn, 1, secondaryKeyColumn, sheetProperties.getGridProperties().getRowCount()));
         ranges.add(coordinatesToRange(sheetProperties, timeColumn, 1, timeColumn, sheetProperties.getGridProperties().getRowCount()));
 
+        sheetsReadPacer.pace();
         Spreadsheet response = sheetsService.spreadsheets().get(spreadsheetId).setRanges(ranges).
             setFields("sheets.data.rowData.values.userEnteredValue,sheets.data.rowMetadata.developerMetadata").
             execute();
@@ -536,7 +543,7 @@ public class FilkArchiveGoogleSheet
         String primaryKeyColumnId,
         String secondaryKeyColumnId,
         Comparator<String> secondaryKeyComparator)
-        throws IOException
+        throws IOException, InterruptedException
     {
         ArrayList<Request> requests = new ArrayList<>();
         int rowOffset = 1;
@@ -583,6 +590,7 @@ public class FilkArchiveGoogleSheet
         BatchUpdateSpreadsheetRequest body
             = new BatchUpdateSpreadsheetRequest().setRequests(requests);
 
+        sheetsWritePacer.pace();
         BatchUpdateSpreadsheetResponse batchResponse =
             sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute();
 
