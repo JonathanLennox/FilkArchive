@@ -17,9 +17,9 @@ public class AnalyzeToGoogleSheet
 
         readClassificationsToCollections(CLASSIFICATIONS_DATA_FILE, collections);
 
-        FilkArchiveGoogleSheet googleSheet = new FilkArchiveGoogleSheet();
+        outputClassificationsToCombinedSpreadsheet(collections);
 
-        outputClassificationsToSpreadsheet(collections, googleSheet);
+//        outputClassificationsToSplitSpreadsheet(collections);
 
         System.out.println("done");
     }
@@ -93,19 +93,52 @@ public class AnalyzeToGoogleSheet
         }
     }
 
-    static void outputClassificationsToSpreadsheet(
-        List<FilkArchiveCollection> collections, FilkArchiveGoogleSheet googleSheet)
+    static void outputClassificationsToCombinedSpreadsheet(
+        List<FilkArchiveCollection> collections)
+        throws IOException, GeneralSecurityException
     {
+        FilkArchiveGoogleSheet googleSheet = new FilkArchiveGoogleSheet();
+
         for (FilkArchiveCollection collection : collections)
         {
+            String sheetName = collection.getCombinedSheetName();
             try
             {
-                collection.outputToSpreadsheet(googleSheet);
+                collection.outputToSpreadsheet(googleSheet, sheetName);
             }
             catch (Exception e)
             {
-                System.err.printf("Error exporting %s: %s%n", collection.getSheetName(), e.toString());
+                System.err.printf("Error exporting %s: %s%n", sheetName, e.toString());
             }
         }
     }
+
+    static void outputClassificationsToSplitSpreadsheet(
+        List<FilkArchiveCollection> collections)
+    {
+        for (FilkArchiveCollection origCollection : collections)
+        {
+            Collection<FilkArchiveCollection> splitCollections = origCollection.splitByKey();
+
+            for (FilkArchiveCollection collection: splitCollections)
+            {
+                String fileName = collection.getSplitFileName();
+                String sheetName = collection.getSplitSheetName();
+                try
+                {
+                    System.out.printf("Processing %s:%s\n", fileName, sheetName);
+                    FilkArchiveGoogleSheet googleSheet = new FilkArchiveGoogleSheet(fileName);
+
+                    collection.outputToSpreadsheet(googleSheet, sheetName);
+                }
+                catch (Exception e)
+                {
+                    System.err.printf("Error exporting %s:%s: %s%n", fileName, sheetName,
+                        e.toString());
+                    e.printStackTrace(System.err);
+                }
+            }
+        }
+    }
+
 }

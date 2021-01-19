@@ -26,4 +26,16 @@ class FilkArchiveFileEntry
         }
         return super.getColumnValue(column);
     }
+
+    @Override
+    String getSplitFileName()
+    {
+        return "Songbooks and Zines";
+    }
+
+    @Override
+    String getSplitSheetName()
+    {
+        return source;
+    }
 }

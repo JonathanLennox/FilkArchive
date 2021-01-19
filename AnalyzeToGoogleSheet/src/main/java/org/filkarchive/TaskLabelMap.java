@@ -35,4 +35,10 @@ class TaskLabelMap
     {
         return new ArrayList<>(taskLabels.navigableKeySet());
     }
+
+    void copy(TaskLabelMap other)
+    {
+        taskLabels.putAll(other.taskLabels);
+        taskLabelWorkflowVersions.putAll(other.taskLabelWorkflowVersions);
+    }
 }

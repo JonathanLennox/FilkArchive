@@ -1,11 +1,8 @@
 package org.filkarchive;
 
-import com.google.api.services.sheets.v4.*;
-import com.google.api.services.sheets.v4.model.*;
-
 import java.io.*;
+import java.lang.reflect.*;
 import java.util.*;
-import java.util.function.*;
 
 abstract class FilkArchiveCollection
 {
@@ -16,7 +13,8 @@ abstract class FilkArchiveCollection
 
     abstract boolean isInstance(ZooniverseClassificationEntry classification);
 
-    abstract FilkArchiveEntry getEntryFromClassification(ZooniverseClassificationEntry classification);
+    abstract FilkArchiveEntry getEntryFromClassification(
+        ZooniverseClassificationEntry classification);
 
     public List<String> getColumns()
     {
@@ -66,29 +64,76 @@ abstract class FilkArchiveCollection
     {
         FilkArchiveEntry entry = getEntryFromClassification(classification);
 
-        FilkArchiveEntryIndex index = new FilkArchiveEntryIndex(entry.getColumnValue(getPrimaryKeyColumn()),
+        addEntry(entry);
+
+        taskLabels.updateTaskLabels(classification);
+    }
+
+    public void addEntry(FilkArchiveEntry entry)
+    {
+        FilkArchiveEntryIndex index = new FilkArchiveEntryIndex(
+            entry.getColumnValue(getPrimaryKeyColumn()),
             entry.getColumnValue(getSecondaryKeyColumn()),
             entry.time,
             this::secondaryKeyComparator);
 
         if (entries.containsKey(index))
         {
-            throw new IllegalArgumentException("Duplicate entry with index " + index);
+            throw new IllegalArgumentException(
+                "Duplicate entry with index " + index);
         }
         entries.put(index, entry);
-
-        taskLabels.updateTaskLabels(classification);
     }
 
-    public abstract String getSheetName();
+    public abstract String getCombinedSheetName();
 
-    public void outputToSpreadsheet(FilkArchiveGoogleSheet googleSheet) throws
+    public void outputToSpreadsheet(FilkArchiveGoogleSheet googleSheet, String sheetName) throws
         IOException
     {
-        int sheetId = googleSheet.getOrAddSheet(getSheetName());
+        int sheetId = googleSheet.getOrAddSheet(sheetName);
 
         Map<String, Integer> columns = googleSheet.setColumns(sheetId, getColumns(), this::getColumnDescription);
 
         googleSheet.addNewRows(sheetId, entries, columns, getPrimaryKeyColumn(), getSecondaryKeyColumn(), this::secondaryKeyComparator);
+    }
+
+    public Collection<FilkArchiveCollection> splitByKey()
+    {
+        Map<String, FilkArchiveCollection> collections = new HashMap<>();
+
+        for (Map.Entry<FilkArchiveEntryIndex, FilkArchiveEntry> entry: entries.entrySet())
+        {
+            if (!collections.containsKey(entry.getKey().primaryKey)) {
+                try
+                {
+                    FilkArchiveCollection newCollection = this.getClass().getDeclaredConstructor().newInstance();
+                    newCollection.taskLabels.copy(taskLabels);
+                    collections.put(entry.getKey().primaryKey, newCollection);
+                }
+                catch (InstantiationException | InvocationTargetException | NoSuchMethodException | IllegalAccessException e)
+                {
+                    System.err.println("Unable to instantiate new " + this.getClass().getName());
+                    e.printStackTrace();
+                    throw new RuntimeException(e);
+                }
+            }
+
+            FilkArchiveCollection collection = collections.get(entry.getKey().primaryKey);
+            collection.entries.put(entry.getKey(), entry.getValue());
+        }
+
+        return collections.values();
+    }
+
+    /* Only meaningful for split collections */
+    public String getSplitFileName()
+    {
+        return entries.values().stream().findFirst().get().getSplitFileName();
+    }
+
+    /* Only meaningful for split collections */
+    public String getSplitSheetName()
+    {
+        return entries.values().stream().findFirst().get().getSplitSheetName();
     }
 }

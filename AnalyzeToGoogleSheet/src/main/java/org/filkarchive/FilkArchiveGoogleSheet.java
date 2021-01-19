@@ -9,10 +9,13 @@ import com.google.api.client.http.javanet.*;
 import com.google.api.client.json.*;
 import com.google.api.client.json.jackson2.*;
 import com.google.api.client.util.store.*;
+import com.google.api.services.drive.model.*;
 import com.google.api.services.sheets.v4.*;
 import com.google.api.services.sheets.v4.model.*;
+import com.google.api.services.drive.*;
 
 import java.io.*;
+import java.io.File;
 import java.security.*;
 import java.util.*;
 import java.util.function.*;
@@ -25,29 +28,89 @@ public class FilkArchiveGoogleSheet
 
     private static final String TOKENS_DIRECTORY_PATH = "tokens";
 
-    private static final String SPREADSHEET_ID = "1AX4U4e0kX_JcU2QKvBLyRxawrrBwj2jHlzZj39Qj9BA";
+    private static final String SINGLE_SPREADSHEET_ID = "1AX4U4e0kX_JcU2QKvBLyRxawrrBwj2jHlzZj39Qj9BA";
 
-    Sheets service;
+    private static final String PARENT_FOLDER_ID = "1wpl58oQe1ONEa4hCCY2PsEYTcDXDgjtS";
+
+    /* Is this defined somewhere in the sheets API? */
+    static final String GOOGLE_SHEETS_MIME_TYPE = "application/vnd.google-apps.spreadsheet";
+
+    Sheets sheetsService;
 
     Spreadsheet spreadsheet;
 
+    private final String spreadsheetId;
+
     FilkArchiveGoogleSheet() throws IOException, GeneralSecurityException
     {
+        spreadsheetId = SINGLE_SPREADSHEET_ID;
+
         final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
-        service = new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, FilkArchiveGoogleSheet
-            .getCredentials(HTTP_TRANSPORT))
+
+        sheetsService = new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY,
+            getCredentials(HTTP_TRANSPORT))
             .setApplicationName(APPLICATION_NAME)
             .build();
 
         refreshSheet();
     }
 
+    FilkArchiveGoogleSheet(String name) throws IOException, GeneralSecurityException
+    {
+        final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
+
+        Credential credentials = getCredentials(HTTP_TRANSPORT);
+
+        sheetsService = new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, credentials)
+            .setApplicationName(APPLICATION_NAME)
+            .build();
+
+        Drive driveService = new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, credentials)
+            .setApplicationName(APPLICATION_NAME)
+            .build();
+
+        String query = "name='" + name + "'"
+            + " and mimeType='" + GOOGLE_SHEETS_MIME_TYPE + "'"
+            + " and '" + PARENT_FOLDER_ID + "' in parents";
+
+        String pageToken = null;
+
+        FileList files = driveService.files().list()
+            .setQ(query)
+            .setSpaces("drive")
+            .setFields("nextPageToken, files(id,name)")
+            .setPageToken(pageToken)
+            .execute();
+
+        if (files.getFiles().isEmpty()) {
+            com.google.api.services.drive.model.File fileRequest =
+                new com.google.api.services.drive.model.File()
+                .setMimeType(GOOGLE_SHEETS_MIME_TYPE)
+                .setName(name)
+                .setParents(Collections.singletonList(PARENT_FOLDER_ID));
+
+            com.google.api.services.drive.model.File newFile =
+                driveService.files().create(fileRequest).execute();
+
+            spreadsheetId = newFile.getId();
+        }
+        else {
+            if (files.getFiles().size() > 1) {
+                System.out.println("Warning: more than one file found with name " + name);
+            }
+            spreadsheetId = files.getFiles().get(0).getId();
+        }
+
+        refreshSheet();
+    }
+
+
     /**
      * Global instance of the scopes required by this program.
      * If modifying these scopes, delete your previously saved tokens/ folder.
      */
     private static final List<String>
-        SCOPES = Collections.singletonList(SheetsScopes.SPREADSHEETS);
+        SCOPES = Arrays.asList(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE);
 
     private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
 
@@ -81,7 +144,7 @@ public class FilkArchiveGoogleSheet
     {
         try
         {
-            spreadsheet = service.spreadsheets().get(SPREADSHEET_ID).execute();
+            spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
         }
         catch (Exception e)
         {
@@ -117,7 +180,7 @@ public class FilkArchiveGoogleSheet
         body.setIncludeSpreadsheetInResponse(true);
 
         BatchUpdateSpreadsheetResponse batchResponse =
-            service.spreadsheets().batchUpdate(SPREADSHEET_ID, body).execute();
+            sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute();
 
         spreadsheet = batchResponse.getUpdatedSpreadsheet();
 
@@ -189,7 +252,8 @@ public class FilkArchiveGoogleSheet
 
         String headersRange = coordinatesToRange(sheetProperties, 0, 0, sheetProperties.getGridProperties().getColumnCount() - 1, 0);
 
-        ValueRange response = service.spreadsheets().values().get(SPREADSHEET_ID, headersRange).execute();
+        ValueRange response = sheetsService.spreadsheets().values().get(
+            spreadsheetId, headersRange).execute();
 
         if (response.getValues() == null || response.getValues().size() == 0)
         {
@@ -207,7 +271,8 @@ public class FilkArchiveGoogleSheet
         metadataSearchRequest.setDataFilters(Collections.singletonList(new DataFilter().
             setDeveloperMetadataLookup(new DeveloperMetadataLookup().setMetadataKey("columnId"))));
 
-        SearchDeveloperMetadataResponse metadataSearchResult = service.spreadsheets().developerMetadata().search(SPREADSHEET_ID, metadataSearchRequest).execute();
+        SearchDeveloperMetadataResponse metadataSearchResult = sheetsService.spreadsheets().developerMetadata().search(
+            spreadsheetId, metadataSearchRequest).execute();
 
         if (metadataSearchResult.getMatchedDeveloperMetadata() != null)
         {
@@ -239,16 +304,20 @@ public class FilkArchiveGoogleSheet
 
         Map<String, Integer> columnLocations = getColumns(sheetId);
 
+        String prevColumnProcessed = null;
+        int prevColumnProcessedId = -1;
+
+        ArrayList<Request> requests = new ArrayList<>();
+
         for (i = 0; i < columnValues.size(); i++)
         {
-            ArrayList<Request> requests = new ArrayList<>();
-
             String columnId = columnValues.get(i);
             String description = describe.apply(columnId);
+            int loc;
 
             if (columnLocations.containsKey(columnId))
             {
-                int loc = columnLocations.get(columnId);
+                loc = columnLocations.get(columnId);
                 if (loc < columnHeaders.size() && columnHeaders.get(loc).equals(description))
                 {
                     continue;
@@ -266,7 +335,6 @@ public class FilkArchiveGoogleSheet
             }
             else
             {
-                int loc;
                 if (i == 0)
                 {
                     loc = 0;
@@ -274,12 +342,38 @@ public class FilkArchiveGoogleSheet
                 else
                 {
                     String prevColumnId = columnValues.get(i-1);
-                    if (!columnLocations.containsKey(prevColumnId))
+                    if (Objects.equals(prevColumnId, prevColumnProcessed))
                     {
-                        throw new RuntimeException("columnLocations does not contain column ID " + (i-1) +
-                            " " + prevColumnId + " when processing column ID " + i + " " + columnId);
+                        loc = prevColumnProcessedId + 1;
                     }
-                    loc = columnLocations.get(prevColumnId) + 1;
+                    else
+                    {
+                        if (!requests.isEmpty())
+                        {
+                            BatchUpdateSpreadsheetRequest body
+                                = new BatchUpdateSpreadsheetRequest()
+                                .setRequests(requests);
+
+                            sheetsService.spreadsheets()
+                                .batchUpdate(spreadsheetId, body).execute();
+
+                            columnHeaders = getColumnHeaders(sheetId);
+                            columnLocations = getColumns(sheetId);
+
+                            requests = new ArrayList<>();
+                        }
+
+                        if (!columnLocations.containsKey(prevColumnId))
+                        {
+                            throw new RuntimeException(
+                                "columnLocations does not contain column ID "
+                                    + (i - 1) +
+                                    " " + prevColumnId
+                                    + " when processing column ID " + i + " "
+                                    + columnId);
+                        }
+                        loc = columnLocations.get(prevColumnId) + 1;
+                    }
                 }
                 InsertDimensionRequest insertDimension = new InsertDimensionRequest().setInheritFromBefore(i > 0).
                     setRange(new DimensionRange().setSheetId(sheetId).setDimension("COLUMNS").setStartIndex(loc).setEndIndex(loc+1));
@@ -296,19 +390,16 @@ public class FilkArchiveGoogleSheet
                     setStart(new GridCoordinate().setColumnIndex(loc).setRowIndex(0).setSheetId(sheetId));
                 requests.add(new Request().setUpdateCells(update));
             }
-
+            prevColumnProcessed = columnId;
+            prevColumnProcessedId = loc;
+        }
+        if (!requests.isEmpty())
+        {
             BatchUpdateSpreadsheetRequest body
                 = new BatchUpdateSpreadsheetRequest().setRequests(requests);
-            body.setIncludeSpreadsheetInResponse(true);
 
-            BatchUpdateSpreadsheetResponse batchResponse =
-                service.spreadsheets().batchUpdate(SPREADSHEET_ID, body).execute();
-
-            spreadsheet = batchResponse.getUpdatedSpreadsheet();
-
-            columnHeaders = getColumnHeaders(sheetId);
-
-            columnLocations = getColumns(sheetId);
+            sheetsService.spreadsheets().batchUpdate(spreadsheetId, body)
+                .execute();
         }
 
         return columnLocations;
@@ -349,7 +440,7 @@ public class FilkArchiveGoogleSheet
         ranges.add(coordinatesToRange(sheetProperties, secondaryKeyColumn, 1, secondaryKeyColumn, sheetProperties.getGridProperties().getRowCount()));
         ranges.add(coordinatesToRange(sheetProperties, timeColumn, 1, timeColumn, sheetProperties.getGridProperties().getRowCount()));
 
-        Spreadsheet response = service.spreadsheets().get(SPREADSHEET_ID).setRanges(ranges).
+        Spreadsheet response = sheetsService.spreadsheets().get(spreadsheetId).setRanges(ranges).
             setFields("sheets.data.rowData.values.userEnteredValue,sheets.data.rowMetadata.developerMetadata").
             execute();
 
@@ -392,14 +483,15 @@ public class FilkArchiveGoogleSheet
         return rows;
     }
 
-    private void insertSeparator(ArrayList<Request> requests, int sheetId, int loc, String primaryKey)
+    private void insertSeparator(ArrayList<Request> requests, int sheetId, int loc)
     {
         InsertDimensionRequest insertDimension = new InsertDimensionRequest().setInheritFromBefore(loc > 0).
             setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
         requests.add(new Request().setInsertDimension(insertDimension));
     }
 
-    private void insertRow(ArrayList<Request> requests, int sheetId, int loc, FilkArchiveEntryIndex index, FilkArchiveEntry entry, Map<String, Integer> columnMap)
+    private void insertRow(ArrayList<Request> requests, int sheetId, int loc, FilkArchiveEntry entry,
+        Map<String, Integer> columnMap)
     {
         InsertDimensionRequest insertDimension = new InsertDimensionRequest().setInheritFromBefore(loc > 0).
             setRange(new DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(loc).setEndIndex(loc+1));
@@ -427,7 +519,6 @@ public class FilkArchiveGoogleSheet
             {
                 row.addAll(Collections.nCopies(columnId - row.size() + 1, null));
             }
-
 
             row.set(columnId, cell);
         }
@@ -475,11 +566,11 @@ public class FilkArchiveGoogleSheet
             if (!((lastIndex != null && lastIndex.primaryKey.equals(key.primaryKey)) ||
                 (insertionPoint > 0 && insertionPoint - 1 < existingRows.size() && existingRows.get(insertionPoint - 1).primaryKey.equals(key.primaryKey))))
             {
-                insertSeparator(requests, sheetId, insertionPoint + rowOffset, key.primaryKey);
+                insertSeparator(requests, sheetId, insertionPoint + rowOffset);
                 rowOffset++;
             }
 
-            insertRow(requests, sheetId,insertionPoint + rowOffset, key, entry.getValue(), columnMap);
+            insertRow(requests, sheetId,insertionPoint + rowOffset, entry.getValue(), columnMap);
             rowOffset++;
             lastIndex = key;
         }
@@ -493,7 +584,7 @@ public class FilkArchiveGoogleSheet
             = new BatchUpdateSpreadsheetRequest().setRequests(requests);
 
         BatchUpdateSpreadsheetResponse batchResponse =
-            service.spreadsheets().batchUpdate(SPREADSHEET_ID, body).execute();
+            sheetsService.spreadsheets().batchUpdate(spreadsheetId, body).execute();
 
         batchResponse.size();
     }

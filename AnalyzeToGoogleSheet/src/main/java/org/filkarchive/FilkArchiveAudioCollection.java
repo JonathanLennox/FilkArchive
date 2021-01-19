@@ -24,7 +24,7 @@ public class FilkArchiveAudioCollection extends FilkArchiveCollection
     }
 
     @Override
-    public String getSheetName()
+    public String getCombinedSheetName()
     {
         return "Audio";
     }

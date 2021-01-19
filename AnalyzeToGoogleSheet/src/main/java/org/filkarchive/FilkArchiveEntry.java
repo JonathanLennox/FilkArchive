@@ -58,4 +58,7 @@ abstract class FilkArchiveEntry
             return null;
         }
     }
+
+    abstract String getSplitFileName();
+    abstract String getSplitSheetName();
 }

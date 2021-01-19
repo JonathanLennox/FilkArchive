@@ -26,7 +26,7 @@ public class FilkArchiveFileCollection
     }
 
     @Override
-    public String getSheetName()
+    public String getCombinedSheetName()
     {
         return "File";
     }

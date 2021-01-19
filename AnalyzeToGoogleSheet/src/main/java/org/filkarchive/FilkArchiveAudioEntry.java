@@ -37,4 +37,16 @@ class FilkArchiveAudioEntry
         }
         return super.getColumnValue(column);
     }
+
+    @Override
+    String getSplitFileName()
+    {
+        return location;
+    }
+
+    @Override
+    String getSplitSheetName()
+    {
+        return event;
+    }
 }
