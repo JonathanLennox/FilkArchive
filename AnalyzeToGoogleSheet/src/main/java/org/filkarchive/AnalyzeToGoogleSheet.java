@@ -12,14 +12,14 @@ public class AnalyzeToGoogleSheet
 {
     private static final String CLASSIFICATIONS_DATA_FILE = "../filk-archive-classifications.csv";
 
-    public static void main(String... args) throws IOException, GeneralSecurityException {
+    public static void main(String... args) throws IOException, InterruptedException, GeneralSecurityException {
         // Build a new authorized API client service.
 
         List<FilkArchiveCollection> collections = createCollections();
 
         readClassificationsToCollections(CLASSIFICATIONS_DATA_FILE, collections);
 
-//        outputClassificationsToCombinedSpreadsheet(collections);
+        outputClassificationsToCombinedSpreadsheet(collections);
 
         outputClassificationsToSplitSpreadsheet(collections);
 
