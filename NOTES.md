@@ -27,11 +27,15 @@ them, rename them, etc.) they need to be restored from the archive
 tier.  The ways I have found to do this are with the system
 console (very tedious), with the aws cli, or with Cyberduck.
 
+### Amazon CLI
+
 For the aws cli, the command looks like:
 
 ```
 aws --endpoint-url https://s3.us-south.cloud-object-storage.appdomain.cloud/ --profile filkarchive s3api restore-object --bucket filkarchive --restore-request 'Days=7' --key [filename] 
 ```
+
+### Cyberduck
 
 From Cyberduck, you have to configure some [Cyberduck hidden configuration options](https://trac.cyberduck.io/wiki/help/en/howto/preferences#Hiddenconfigurationoptions):
 
@@ -41,5 +45,7 @@ s3.glacier.restore.tier=Bulk
 ```
 
 (You should be able to the expiration days to any reasonable value that works for you up to 30; I haven't tested whether any other restore tier works.)
+
+Once you have these settings set, you can select "Restore" from the "File" menu, or from right-clicking on a file, and it will submit a restore request.
 
 However you request it, the restore request takes up to 12 hours to complete the restoration from deep storage.
