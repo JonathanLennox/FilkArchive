@@ -29,6 +29,10 @@ To split files, run the `split-audio` file something like:
 
 $ `~/split-audio.pl --recorded-by="J. Spencer Love" --metadata="British Filk Convention: Obliter-8"/metadata.json --output-dir=/cygdrive/g/Split/Obliter-8 "British Filk Convention: Obliter-8"/*.wav`
 
+If you want to host the split files somewhere other than on Zooniverse itself, also add an option like
+
+`--output-url=https://www.ladymondegreen.com/filkarchive/Obliter-8/`
+
 The `metadata` file is a JSON file containing metadata both for the entire "location" (Convention), and the individual
 "events" (recordings).  For example the metadata for the above invocaton looks like:
 
@@ -47,7 +51,7 @@ The `metadata` file is a JSON file containing metadata both for the entire "loca
 }
 ```
 
-Once the files are produced, they can be uploaded to Zooniverse using the panoptes tool.  Change to the
+Once the files are produced, they need to be uploaded to Zooniverse using the panoptes tool.  Change to the
 output directory specified above, and then run (e.g.)
 
 $ `panoptes subject-set upload-subjects 78566 subjects.csv`
@@ -59,4 +63,13 @@ $ `panoptes subject-set ls -p 9901`
 The panoptes tool can be installed using Python's `pip` utility, as
 
 $ `pip install panoptescli`
+
+If the split files are being hosted somewhere other than Zooniverse (i.e. the `--output-url` option was
+used when generating the split files), first upload the split files to the hosting server, e.g.
+
+$ `rsync -avP *.mp3 merav@www.ladymondegreen.com:ladymondegreen.com/filkarchive/Obliter-8`
+
+Information about them can be uploaded to Zooniverse using the panoptes tool.
+
+$ `panoptes subject-set upload-subjects -r 2 -m audio/mpeg 78566 subjects.csv`
 

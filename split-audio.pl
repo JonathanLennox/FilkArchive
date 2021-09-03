@@ -28,10 +28,16 @@ my $file_date_cutoff = 2019; # The cut-off after which we will consider file dat
 my $metadata_file;
 my $metadata;
 my $output_dir;
+my $url_prefix;
 
 GetOptions("recorded-by=s" => \$recorded_by,
 	   "metadata=s" => \$metadata_file,
-	   "output-dir=s" => \$output_dir);
+	   "output-dir=s" => \$output_dir,
+	   "output-url=u" => \$url_prefix);
+
+if (defined($url_prefix) && $url_prefix !~ m,/,) {
+    $url_prefix .= "/";
+}
 
 # Make sure SoX is installed
 
@@ -144,7 +150,11 @@ sub open_csvfile($)
     }
     else {
 	open ($fh, ">>", $csvfile) or die("Couldn't open $csvfile: $!");
-	print $fh "#filename,#origfile,location,event,recorded by,#index,date,clipstart,clipend\n";
+	print $fh "#filename,";
+	if (defined($url_prefix)) {
+	    print $fh "#url,";
+	}
+	print $fh "#origfile,location,event,recorded by,#index,date,clipstart,clipend\n";
     }
     return $fh;
 }
@@ -264,7 +274,16 @@ sub process_file($)
 
 	my (undef, undef, $outfilebase) = File::Spec->splitpath($outfile);
 
-	print $csv csv($outfilebase, $file, $location, $event, $recorded_by, $idx, $file_date, format_duration($clipstart/$hz), format_duration($clipend/$hz));
+	my $url;
+	if (defined($url_prefix)) {
+	    $url = $url_prefix . $outfilebase;
+	}
+
+	my @fields = ($outfilebase, $file, $location, $event, $recorded_by, $idx, $file_date, format_duration($clipstart/$hz), format_duration($clipend/$hz));
+	if (defined($url)) {
+	    splice(@fields, 1, 0, $url);
+	}
+	print $csv csv(@fields);
     }
     close($csv) or die("Error closing csv file");
 }
