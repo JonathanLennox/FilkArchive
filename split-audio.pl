@@ -33,7 +33,7 @@ my $url_prefix;
 GetOptions("recorded-by=s" => \$recorded_by,
 	   "metadata=s" => \$metadata_file,
 	   "output-dir=s" => \$output_dir,
-	   "output-url=u" => \$url_prefix);
+	   "output-url=s" => \$url_prefix);
 
 if (defined($url_prefix) && $url_prefix !~ m,/,) {
     $url_prefix .= "/";
