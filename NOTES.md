@@ -4,7 +4,7 @@
 
 To generate the commands to abort multipart uploads to IBM cloud storage:
 ```
-ibmcloud cos multipart-uploads --output json --bucket filkarchive | jq -r '.Uploads[] | select(."Initiated" <= "2021-07-15") | "ibmcloud cos abort-multipart-upload --bucket=filkarchive --key=\"\(.Key)\" --upload-id=\"\(.UploadId)\""'
+ibmcloud cos multipart-uploads --region us-south  --output json --bucket filkarchive | jq -r '.Uploads[] | select(."Initiated" <= "2021-07-15") | "ibmcloud cos abort-multipart-upload --region us-south  --bucket=filkarchive --key=\"\(.Key)\" --upload-id=\"\(.UploadId)\""'
 ```
 
 You'll need the [ibmcloud cli](https://www.ibm.com/cloud/cli) installed.
